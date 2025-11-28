@@ -20,4 +20,4 @@ RUN useradd -m -r app && chown -R app /app
 USER app
 
 # Run the application
-CMD ["python", "main.py"]
+CMD ["python", "server.py"]
