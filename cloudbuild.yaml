@@ -1,0 +1,64 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/mysql-bigquery-etl:$COMMIT_SHA', '.']
+  
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/mysql-bigquery-etl:$COMMIT_SHA']
+  
+  # Deploy to Cloud Run
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+    - 'run'
+    - 'deploy'
+    - 'mysql-bigquery-etl'
+    - '--image'
+    - 'gcr.io/$PROJECT_ID/mysql-bigquery-etl:$COMMIT_SHA'
+    - '--region'
+    - 'us-central1'
+    - '--platform'
+    - 'managed'
+    - '--cpu'
+    - '2'
+    - '--memory'
+    - '2Gi'
+    - '--timeout'
+    - '1800'
+    - '--set-secrets'
+    - 'MYSQL_HOST=mysql-host:latest'
+    - '--set-secrets'
+    - 'MYSQL_USER=mysql-user:latest'
+    - '--set-secrets'
+    - 'MYSQL_PASSWORD=mysql-password:latest'
+    - '--set-secrets'
+    - 'MYSQL_DATABASE=mysql-database:latest'
+    - '--set-env-vars'
+    - 'GCP_PROJECT_ID=$PROJECT_ID'
+    - '--set-env-vars'
+    - 'BIGQUERY_DATASET=mysql_etl'
+    - '--set-env-vars'
+    - 'BIGQUERY_LOCATION=US'
+
+  # Create/update Cloud Scheduler job
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        SERVICE_URL=$(gcloud run services describe mysql-bigquery-etl --region us-central1 --format 'value(status.url)')
+        gcloud scheduler jobs create http mysql-bigquery-etl-scheduler \
+          --schedule="0 */6 * * *" \
+          --uri=$$SERVICE_URL \
+          --http-method=GET \
+          --oidc-service-account-email=$$PROJECT_ID@appspot.gserviceaccount.com \
+          --oidc-token-audience=$$SERVICE_URL \
+          --location=us-central1 \
+          --time-zone="UTC" || \
+        gcloud scheduler jobs update http mysql-bigquery-etl-scheduler \
+          --schedule="0 */6 * * *" \
+          --uri=$$SERVICE_URL \
+          --location=us-central1
+
+images:
+  - 'gcr.io/$PROJECT_ID/mysql-bigquery-etl:$COMMIT_SHA'

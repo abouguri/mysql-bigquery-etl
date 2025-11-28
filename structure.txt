@@ -1,0 +1,10 @@
+mysql-bigquery-etl/
+├── Dockerfile
+├── requirements.txt
+├── main.py
+├── etl_pipeline.py
+├── config/
+│   └── config.py
+├── scripts/
+│   └── deploy.sh
+└── cloudbuild.yaml
