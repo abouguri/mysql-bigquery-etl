@@ -8,6 +8,9 @@ class Config:
     def __init__(self):
         self.project_id = os.getenv('GCP_PROJECT_ID')
         self.environment = os.getenv('ENVIRONMENT', 'development')
+        if not self.project_id:
+            import warnings
+            warnings.warn("GCP_PROJECT_ID is not set. BigQuery operations may fail.")
         
     def get_secret(self, secret_id, default=None):
         """Retrieve secrets from Google Secret Manager"""
