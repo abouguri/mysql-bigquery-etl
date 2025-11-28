@@ -1,10 +1,10 @@
-# MySQL → BigQuery ETL Pipeline 🚀
+# MySQL → BigQuery ETL Pipeline
 
 Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and developer-friendly ETL pipeline that extracts data from MySQL, transforms it, and loads it into Google BigQuery. Perfect for analytics, reporting, and data warehousing.
 
 ---
 
-## ✨ Features
+## Features
 - Incremental & full data loads
 - Modular transformations (add your own!)
 - Configurable via `.env` or Google Secret Manager
@@ -13,7 +13,7 @@ Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and d
 
 ---
 
-## 🛠️ Prerequisites
+## Prerequisites
 - Python 3.11+
 - MySQL server (local or remote)
 - Google Cloud project with BigQuery enabled
@@ -21,7 +21,7 @@ Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and d
 
 ---
 
-## ⚡ Quickstart
+## Quickstart
 1. **Clone the repo:**
    ```sh
    git clone https://github.com/abouguri/mysql-bigquery-etl.git
@@ -57,14 +57,14 @@ Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and d
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 - All config is in `config/config.py` and `.env`.
 - Supports local env vars and Google Secret Manager for production.
 - Edit `etl_tables` in `Config` to add/remove tables or transformations.
 
 ---
 
-## 🐳 Docker & Cloud Build
+## Docker & Cloud Build
 - Build and run with Docker:
   ```sh
   docker build -t mysql-bigquery-etl .
@@ -74,14 +74,14 @@ Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and d
 
 ---
 
-## 🧩 Extending & Hacking
+## Extending & Hacking
 - Add new transformations: just add a function or string key in `etl_pipeline.py`.
 - Add more tables: update `etl_tables` in `Config`.
 - Use your own secrets backend: extend `get_secret` in `Config`.
 
 ---
 
-## 🐞 Troubleshooting
+## Troubleshooting
 - **MySQL connection errors?**
   - Is MySQL running and accessible from your machine?
   - Are your credentials in `.env` correct?
@@ -94,14 +94,14 @@ Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and d
 
 ---
 
-## 🤝 Contributing
-PRs, issues, and ideas are welcome! Make it yours, make it better, and have fun 🚀
+## Contributing
+PRs, issues, and ideas are welcome! Make it yours, make it better, and have fun.
 
 ---
 
-## 📜 License
+## License
 MIT
 
 ---
 
-> Made with ❤️, Python, and caffeine.
+> Made with Python and caffeine.
