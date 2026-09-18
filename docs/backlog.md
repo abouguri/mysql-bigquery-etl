@@ -13,8 +13,8 @@ This is the versioned issue register for the roadmap. Check validation evidence 
 | ETL-07 | P1 | Bootstrap order, secret/config contract, URL/SQL hygiene | Implemented; local tests, cloud bootstrap gate pending |
 | ETL-08 | P1 | Bounded extraction and fixed run bounds | Implemented and tested against concurrent MySQL changes |
 | ETL-09 | P1 | Schema, exact money and fail-closed transformations | Implemented; local contract tests passing |
-| ETL-10 | P1 | Job runtime, deployment scripts and build isolation | Open |
-| ETL-11 | P1 | Infrastructure, scoped identities, alerts and runbooks | Open |
+| ETL-10 | P1 | Job runtime, deployment scripts and build isolation | Implemented; Terraform schema and CLI image checks passed |
+| ETL-11 | P1 | Infrastructure, scoped identities, alerts and runbooks | Terraform prepared; apply and alert delivery require sandbox |
 | ETL-12 | P1 | Opt-in real BigQuery correctness/failure tests | Written; sandbox/project/budget required to execute |
 | ETL-13 | P1 | Revenue mart, reconciliation and performance/cost evidence | Open |
 | ETL-14 | P2 | README, release, demo and measured CV case study | Open |

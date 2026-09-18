@@ -6,6 +6,7 @@ import logging
 from dotenv import load_dotenv
 
 from etl_pipeline import ETLPipeline
+from etl.observability import configure_logging, event
 
 
 def timestamp(value):
@@ -36,11 +37,12 @@ def arguments(argv=None):
 def main(argv=None):
     args = arguments(argv)
     load_dotenv()
+    configure_logging()
     try:
         replay = (args.replay_from, args.replay_until) if args.replay_from else None
         return 0 if ETLPipeline().run_pipeline(args.table, args.reconcile, replay) else 1
     except Exception as error:
-        logging.error('Application error: %s', type(error).__name__)
+        event(logging.getLogger(__name__), 'pipeline_failed', severity=logging.ERROR, error_type=type(error).__name__)
         return 1
 
 

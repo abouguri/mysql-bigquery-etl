@@ -1,5 +1,6 @@
 """Commerce ETL orchestration; no destination writes bypass Warehouse.publish."""
 import logging
+import os
 import time
 
 from google.cloud import bigquery
@@ -9,6 +10,7 @@ from config.config import Config
 from etl.contracts import schema, transform, validate
 from etl.warehouse import Warehouse
 from etl.source import Source
+from etl.observability import configure_logging, event
 
 
 class ETLPipeline:
@@ -18,7 +20,7 @@ class ETLPipeline:
         self.mysql_engine = None
         self.bq_client = None
         self.warehouse = None
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+        configure_logging()
         self.logger = logging.getLogger(__name__)
 
     def connect_mysql(self):
@@ -27,7 +29,10 @@ class ETLPipeline:
             "mysql+mysqlconnector", username=settings["user"], password=settings["password"],
             host=settings["host"], port=settings["port"], database=settings["database"],
         )
-        self.mysql_engine = create_engine(url, pool_pre_ping=True)
+        tls = {}
+        if os.getenv('MYSQL_SSL_CA'):
+            tls = dict(ssl_ca=os.environ['MYSQL_SSL_CA'], ssl_verify_cert=True, ssl_verify_identity=True)
+        self.mysql_engine = create_engine(url, pool_pre_ping=True, connect_args=tls)
         with self.mysql_engine.connect() as connection:
             connection.execute(text("SELECT 1"))
 
@@ -41,7 +46,12 @@ class ETLPipeline:
     def ensure_dataset(self):
         dataset = bigquery.Dataset(f"{self.config.project_id}.{self.config.bigquery_config['dataset_id']}")
         dataset.location = self.config.bigquery_config['location']
-        self.bq_client.create_dataset(dataset, exists_ok=True)
+        if self.config.environment == 'production':
+            actual = self.bq_client.get_dataset(dataset)
+            if actual.location.lower() != dataset.location.lower():
+                raise ValueError('Dataset location mismatch')
+        else:
+            self.bq_client.create_dataset(dataset, exists_ok=True)
 
     def create_metadata_table(self):
         self.warehouse.bootstrap(self.config.etl_tables)
@@ -51,6 +61,7 @@ class ETLPipeline:
 
     def run_pipeline(self, table_name=None, reconcile=False, replay=None):
         started = time.monotonic()
+        claim = None
         try:
             self.connect_mysql()
             self.connect_bigquery()
@@ -67,7 +78,7 @@ class ETLPipeline:
                 if replay:
                     table['incremental'] = True
                 claim = self.warehouse.acquire(table['mysql_table'])
-                self.logger.info('Run acquired: table=%s run_id=%s', claim.table, claim.run_id)
+                event(self.logger, 'run_acquired', table=claim.table, run_id=claim.run_id)
                 with source_reader.snapshot(table, claim.lower_time, full=not table['incremental'], replay=replay) as window:
                     def validated_pages():
                         for source in window.batches:
@@ -81,12 +92,12 @@ class ETLPipeline:
                         validated_pages(), table, claim, upper,
                         upper_time=None if replay else window.upper_time,
                     )
-                self.logger.info('Run succeeded: table=%s run_id=%s rows=%d', claim.table, claim.run_id, rows)
-            self.logger.info('Pipeline succeeded: elapsed_seconds=%.3f', time.monotonic() - started)
+                event(self.logger, 'table_succeeded', table=claim.table, run_id=claim.run_id, rows=rows, source_watermark=window.upper_time, replay=bool(replay))
+            event(self.logger, 'pipeline_succeeded', elapsed_seconds=round(time.monotonic() - started, 3))
             return True
         except Exception as error:
             # Leases deliberately expire on error. Never release an ambiguous publish.
-            self.logger.error('Pipeline failed: error_type=%s', type(error).__name__)
+            event(self.logger, 'pipeline_failed', severity=logging.ERROR, error_type=type(error).__name__, table=getattr(claim, 'table', None), run_id=getattr(claim, 'run_id', None))
             return False
         finally:
             if self.mysql_engine is not None:

@@ -4,10 +4,6 @@
 #
 #    pip-compile --no-index --output-file=requirements-dev.txt --strip-extras requirements-dev.in
 #
-blinker==1.9.0
-    # via
-    #   -c requirements.txt
-    #   flask
 certifi==2026.7.22
     # via
     #   -c requirements.txt
@@ -20,24 +16,15 @@ charset-normalizer==3.5.1
     # via
     #   -c requirements.txt
     #   requests
-click==8.5.0
-    # via
-    #   -c requirements.txt
-    #   flask
 cryptography==50.0.1
     # via
     #   -c requirements.txt
     #   google-auth
-flask==3.1.3
-    # via
-    #   -c requirements.txt
-    #   -r requirements.in
 google-api-core==2.30.3
     # via
     #   -c requirements.txt
     #   google-cloud-bigquery
     #   google-cloud-core
-    #   google-cloud-secret-manager
 google-auth==2.58.0
     # via
     #   -c requirements.txt
@@ -52,10 +39,6 @@ google-cloud-core==2.7.0
     # via
     #   -c requirements.txt
     #   google-cloud-bigquery
-google-cloud-secret-manager==2.16.2
-    # via
-    #   -c requirements.txt
-    #   -r requirements.in
 google-crc32c==1.8.0
     # via
     #   -c requirements.txt
@@ -68,22 +51,15 @@ googleapis-common-protos==1.75.0
     # via
     #   -c requirements.txt
     #   google-api-core
-    #   grpc-google-iam-v1
     #   grpcio-status
 greenlet==3.5.6
     # via
     #   -c requirements.txt
     #   sqlalchemy
-grpc-google-iam-v1==0.14.4
-    # via
-    #   -c requirements.txt
-    #   google-cloud-secret-manager
 grpcio==1.84.0
     # via
     #   -c requirements.txt
     #   google-api-core
-    #   googleapis-common-protos
-    #   grpc-google-iam-v1
     #   grpcio-status
 grpcio-status==1.62.3
     # via
@@ -95,20 +71,6 @@ idna==3.20
     #   requests
 iniconfig==2.3.0
     # via pytest
-itsdangerous==2.2.0
-    # via
-    #   -c requirements.txt
-    #   flask
-jinja2==3.1.6
-    # via
-    #   -c requirements.txt
-    #   flask
-markupsafe==3.0.3
-    # via
-    #   -c requirements.txt
-    #   flask
-    #   jinja2
-    #   werkzeug
 mysql-connector-python==9.7.0
     # via
     #   -c requirements.txt
@@ -133,14 +95,11 @@ proto-plus==1.28.2
     # via
     #   -c requirements.txt
     #   google-api-core
-    #   google-cloud-secret-manager
 protobuf==4.25.9
     # via
     #   -c requirements.txt
     #   google-api-core
-    #   google-cloud-secret-manager
     #   googleapis-common-protos
-    #   grpc-google-iam-v1
     #   grpcio-status
     #   proto-plus
 pyarrow==23.0.1
@@ -206,7 +165,3 @@ urllib3==2.8.0
     # via
     #   -c requirements.txt
     #   requests
-werkzeug==3.1.8
-    # via
-    #   -c requirements.txt
-    #   flask

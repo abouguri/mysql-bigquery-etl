@@ -60,8 +60,8 @@ See [baseline evidence](docs/evidence/baseline.md) and [the roadmap](docs/portfo
    ```
 2. **Set up Python & venv:**
    ```sh
-   pyenv install 3.11.7  # if needed
-   pyenv local 3.11.7
+   pyenv install 3.11.16  # if needed
+   pyenv local 3.11.16
    python -m venv venv
    source venv/bin/activate
    pip install --upgrade pip
@@ -95,6 +95,14 @@ See [baseline evidence](docs/evidence/baseline.md) and [the roadmap](docs/portfo
 - Edit `etl_tables` in `Config` to add/remove tables or transformations.
 
 ---
+
+## Cloud deployment
+
+Use [the deployment runbook](docs/runbooks/deployment.md) for Terraform bootstrap,
+image builds, pinned secret versions, TLS/network prerequisites and validation.
+Cloud Build tests and publishes images; Terraform owns Cloud Run Jobs and Scheduler.
+Schedules default to paused. The legacy `server.py` now invokes the CLI; it no
+longer serves HTTP. Cloud deployment and alert delivery remain unverified.
 
 ## Docker & Cloud Build
 - Build and run with Docker:

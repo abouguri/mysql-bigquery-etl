@@ -28,10 +28,12 @@ class Config:
         missing = [name for name in required if not os.getenv(name)]
         if missing:
             raise ValueError("Missing required settings: " + ", ".join(missing))
-        if not re.fullmatch(r"[a-z][a-z0-9-]{4,61}[a-z0-9]", self.project_id):
+        if not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", self.project_id):
             raise ValueError("Invalid GCP_PROJECT_ID")
         if self.environment not in {"development", "test", "production"}:
             raise ValueError("Invalid ENVIRONMENT")
+        if self.environment == "production" and not os.getenv("MYSQL_SSL_CA"):
+            raise ValueError("Production requires MYSQL_SSL_CA for verified source TLS")
         identifier(self.bigquery_config["dataset_id"])
         if not self.bigquery_config["location"]:
             raise ValueError("BIGQUERY_LOCATION must not be empty")

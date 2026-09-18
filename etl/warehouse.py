@@ -14,6 +14,7 @@ from google.api_core import exceptions
 from google.cloud import bigquery
 
 from config.config import identifier
+from etl.observability import event
 
 
 @dataclass(frozen=True)
@@ -55,7 +56,7 @@ class Warehouse:
                 except exceptions.NotFound:
                     job = submit()
                 result = job.result(timeout=60)
-                self.logger.info("BigQuery job completed: %s", job_id)
+                event(self.logger, "warehouse_job_completed", job_id=job_id, location=self.location)
                 return result
             except transient:
                 if attempt == 2:

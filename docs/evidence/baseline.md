@@ -40,3 +40,11 @@ The publication/contract implementation reports **37 passed, 4 skipped** against
 ## Task 4 result
 
 **50 passed, 4 skipped** after replacing the runtime's unbounded extraction path with paged consistent snapshots. MySQL integration tests cover timestamp ties, concurrent source changes, late records, deletes, invalid primary keys, NULL timestamp visibility and bounded replay. Page failures cannot publish a partial snapshot in client tests. The four live BigQuery gates remain unexecuted.
+
+## Task 5 result
+
+- Rebuilt test image with the reduced lock: **54 passed, 4 skipped**.
+- Production CLI image built from a pinned Python 3.11.16 digest; `--help` completed successfully as the non-root application user.
+- Terraform 1.13.5 with locked Google provider 7.46.1: format, initialization without a backend, and provider schema validation passed. No plan/apply against a cloud account was run.
+- Ruff static checks, shell syntax and YAML parsing passed.
+- Deployment, IAM-denial checks, verified TLS connectivity and alert delivery remain external validation gates.
