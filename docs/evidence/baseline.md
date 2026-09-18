@@ -48,3 +48,7 @@ The publication/contract implementation reports **37 passed, 4 skipped** against
 - Terraform 1.13.5 with locked Google provider 7.46.1: format, initialization without a backend, and provider schema validation passed. No plan/apply against a cloud account was run.
 - Ruff static checks, shell syntax and YAML parsing passed.
 - Deployment, IAM-denial checks, verified TLS connectivity and alert delivery remain external validation gates.
+
+## Task 6 result
+
+**55 passed, 5 skipped** (the new skip is the live revenue-model/quality integration gate). The synthetic processing experiment completed 20 fresh-process samples across 100k/1m rows and bounded/full-frame configurations under two CPUs and 2 GiB. Every sample reconciled row count and exact revenue. At 1m rows, median peak RSS was 150.32 MiB bounded versus 772.95 MiB full-frame; median processing duration was 8.625s versus 8.299s. See `benchmarks/results/summary.md` and its raw CSV/figures for scope and variability. No cloud cost or ETL-throughput result is claimed.

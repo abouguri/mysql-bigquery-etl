@@ -1,0 +1,1 @@
+run_id,commit,dataset_seed,input_rows,row_width_bytes,region,worker_cpu,worker_memory_gib,batch_size,extract_seconds,load_seconds,merge_seconds,query_bytes_billed,compute_cost,query_cost,storage_cost,logging_cost,network_cost,total_cost,currency,billing_window,measurement_or_estimate

@@ -16,7 +16,7 @@ This is the versioned issue register for the roadmap. Check validation evidence 
 | ETL-10 | P1 | Job runtime, deployment scripts and build isolation | Implemented; Terraform schema and CLI image checks passed |
 | ETL-11 | P1 | Infrastructure, scoped identities, alerts and runbooks | Terraform prepared; apply and alert delivery require sandbox |
 | ETL-12 | P1 | Opt-in real BigQuery correctness/failure tests | Written; sandbox/project/budget required to execute |
-| ETL-13 | P1 | Revenue mart, reconciliation and performance/cost evidence | Open |
+| ETL-13 | P1 | Revenue mart, reconciliation and performance/cost evidence | SQL and local 100k/1m evidence ready; cloud reconciliation/cost pending |
 | ETL-14 | P2 | README, release, demo and measured CV case study | Open |
 
 External requirements: user-selected cloud sandbox and test spend cap; cloud credentials; a real observation window for freshness claims. Do not invent results while those are unavailable.

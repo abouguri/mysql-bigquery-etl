@@ -1,0 +1,2 @@
+# Plotting only; not part of the worker or timed benchmark process.
+matplotlib==3.10.8
