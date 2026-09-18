@@ -53,7 +53,7 @@ echo "Service deployed successfully: $SERVICE_URL"
 # Create Cloud Scheduler job
 echo "Creating Cloud Scheduler job..."
 gcloud scheduler jobs create http ${SERVICE_NAME}-scheduler \
-    --schedule="0 */6 * * *" \  # Every 6 hours
+    --schedule="0 */6 * * *" \
     --uri="$SERVICE_URL" \
     --http-method=GET \
     --oidc-service-account-email="${PROJECT_ID}@appspot.gserviceaccount.com" \

@@ -7,7 +7,6 @@ from google.api_core.exceptions import Forbidden
 from google.cloud import bigquery
 
 
-@pytest.mark.xfail(strict=True, reason="ETL-02: checkpoint errors currently reset to zero")
 def test_checkpoint_permission_error_fails_closed(pipeline):
     pipeline.bq_client = Mock()
     pipeline.bq_client.query.side_effect = Forbidden("denied")
@@ -15,7 +14,6 @@ def test_checkpoint_permission_error_fails_closed(pipeline):
         pipeline.get_last_processed_id("users")
 
 
-@pytest.mark.xfail(strict=True, reason="ETL-03: checkpoint job is not awaited")
 def test_checkpoint_waits_for_completion(pipeline):
     pipeline.bq_client = Mock()
     pipeline.update_last_processed_id("users", 1)

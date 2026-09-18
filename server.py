@@ -14,8 +14,8 @@ def run_etl():
         else:
             return jsonify({'status': 'error', 'message': 'ETL pipeline failed'}), 500
     except Exception as e:
-        logging.exception("ETL pipeline execution error")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        logging.error("ETL pipeline execution error: %s", type(e).__name__)
+        return jsonify({'status': 'error', 'message': 'ETL execution failed; inspect restricted logs'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

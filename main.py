@@ -19,7 +19,7 @@ def main():
             return 1
     
     except Exception as e:
-        logging.error(f"Application error: {e}")
+        logging.error(f"Application error: {type(e).__name__}")
         return 1
 
 if __name__ == "__main__":

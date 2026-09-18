@@ -5,12 +5,12 @@ This is the versioned issue register for the roadmap. Check validation evidence 
 | ID | Priority | Task | Status |
 |---|---|---|---|
 | ETL-01 | P0 | Reproducible fixtures, runtime, dependencies and baseline tests | Done; local evidence recorded |
-| ETL-02 | P0 | Fail closed on checkpoint read failures | Open |
-| ETL-03 | P0 | Await metadata jobs; atomic data/checkpoint publication | Open |
+| ETL-02 | P0 | Fail closed on checkpoint read failures | Done; permission/duplicate tests |
+| ETL-03 | P0 | Await metadata jobs; atomic data/checkpoint publication | Awaiting fixed; atomic publication still open |
 | ETL-04 | P0 | Correct full-snapshot and empty-source semantics | Open |
 | ETL-05 | P0 | Writer fencing, overlap and stale publication tests | Open |
 | ETL-06 | P0 | Updates/deletes and source cursor contract | Open |
-| ETL-07 | P1 | Bootstrap order, secret/config contract, URL/SQL hygiene | Open |
+| ETL-07 | P1 | Bootstrap order, secret/config contract, URL/SQL hygiene | Implemented; local tests, cloud bootstrap gate pending |
 | ETL-08 | P1 | Bounded extraction and fixed run bounds | Open |
 | ETL-09 | P1 | Schema, exact money and fail-closed transformations | Open |
 | ETL-10 | P1 | Job runtime, deployment scripts and build isolation | Open |

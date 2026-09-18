@@ -28,3 +28,7 @@ Validated on 2026-09-18 using Python 3.11.16 in Docker:
 - `git diff --check`: passed.
 
 The three expected failures remain open correctness tasks. Milestone 1 still requires bootstrap/config fixes and the opt-in cloud gate.
+
+## Task 2 result
+
+The mounted-source suite against the disposable MySQL fixture now reports **21 passed, 1 expected failure**. The checkpoint-read and completion-wait regressions are passing. The remaining expected failure is full-load append semantics. Shell syntax and Compose configuration checks pass. No cloud execution has been claimed.

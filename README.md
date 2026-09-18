@@ -7,7 +7,7 @@ Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and d
 ## Features
 - Incremental & full data loads
 - Modular transformations (add your own!)
-- Configurable via `.env` or Google Secret Manager
+- Configurable via `.env` or runtime-injected Secret Manager values
 - Logging, error handling, and metadata tracking
 - Ready for local dev, Docker, or Google Cloud Build
 
@@ -75,7 +75,8 @@ See [baseline evidence](docs/evidence/baseline.md) and [the roadmap](docs/portfo
 
 ## Configuration
 - All config is in `config/config.py` and `.env`.
-- Supports local env vars and Google Secret Manager for production.
+- Uses the same environment-variable contract locally and in production. Cloud Run injects Secret Manager values; the application does not fetch secrets itself.
+- Production validates required connection settings and SQL identifiers before opening clients. Error logs contain exception types, not raw driver errors or credentials.
 - Edit `etl_tables` in `Config` to add/remove tables or transformations.
 
 ---

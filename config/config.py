@@ -1,28 +1,50 @@
 import os
-from google.cloud import secretmanager
-import json
+import re
+
+
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def identifier(value):
+    """Validate SQL identifiers; values are bound separately."""
+    if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
+        raise ValueError("Invalid SQL identifier")
+    return value
+
 
 class Config:
-    """Configuration management for the ETL pipeline"""
-    
+    """Environment-only configuration; cloud secrets are injected by the runtime."""
+
     def __init__(self):
-        self.project_id = os.getenv('GCP_PROJECT_ID')
-        self.environment = os.getenv('ENVIRONMENT', 'development')
-        if not self.project_id:
-            import warnings
-            warnings.warn("GCP_PROJECT_ID is not set. BigQuery operations may fail.")
-        
+        self.project_id = os.getenv("GCP_PROJECT_ID")
+        self.environment = os.getenv("ENVIRONMENT", "development")
+
     def get_secret(self, secret_id, default=None):
-        """Retrieve secrets from Google Secret Manager"""
-        if self.environment == 'development':
-            # For local development, use environment variables
-            return os.getenv(secret_id, default)
-        
-        client = secretmanager.SecretManagerServiceClient()
-        secret_name = f"projects/{self.project_id}/secrets/{secret_id}/versions/latest"
-        response = client.access_secret_version(name=secret_name)
-        return response.payload.data.decode('UTF-8')
-    
+        # The same contract applies locally and in Cloud Run. No SDK/network I/O.
+        return os.getenv(secret_id, default)
+
+    def validate(self):
+        required = ["GCP_PROJECT_ID", "MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"]
+        missing = [name for name in required if not os.getenv(name)]
+        if missing:
+            raise ValueError("Missing required settings: " + ", ".join(missing))
+        if not re.fullmatch(r"[a-z][a-z0-9-]{4,61}[a-z0-9]", self.project_id):
+            raise ValueError("Invalid GCP_PROJECT_ID")
+        if self.environment not in {"development", "test", "production"}:
+            raise ValueError("Invalid ENVIRONMENT")
+        identifier(self.bigquery_config["dataset_id"])
+        if not self.bigquery_config["location"]:
+            raise ValueError("BIGQUERY_LOCATION must not be empty")
+        try:
+            port = self.mysql_config["port"]
+        except ValueError:
+            raise ValueError("MYSQL_PORT must be an integer") from None
+        if not 1 <= port <= 65535:
+            raise ValueError("MYSQL_PORT must be between 1 and 65535")
+        for table in self.etl_tables:
+            for name in ("mysql_table", "bigquery_table", "primary_key"):
+                identifier(table[name])
+
     @property
     def mysql_config(self):
         """MySQL connection configuration"""

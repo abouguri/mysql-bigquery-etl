@@ -2,10 +2,10 @@ import pandas as pd
 import logging
 import time
 from typing import Any, Callable, Dict, List, Optional
-from sqlalchemy import create_engine, text
+from sqlalchemy import URL, create_engine, text
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
-from config.config import Config
+from config.config import Config, identifier
 
 class ETLPipeline:
     """
@@ -22,16 +22,8 @@ class ETLPipeline:
 
     def validate_config(self) -> None:
         """Validate that all required config values are present."""
-        missing = []
-        if not getattr(self.config, 'project_id', None):
-            missing.append('project_id')
-        if not getattr(self.config, 'bigquery_config', None) or not self.config.bigquery_config.get('dataset_id'):
-            missing.append('bigquery_config["dataset_id"]')
-        if not getattr(self.config, 'etl_tables', None):
-            missing.append('etl_tables')
-        if missing:
-            raise ValueError(f"Missing required config values: {', '.join(missing)}")
-    
+        self.config.validate()
+
     def setup_logging(self) -> None:
         """Setup logging configuration."""
         logging.basicConfig(
@@ -44,14 +36,17 @@ class ETLPipeline:
         """Establish MySQL connection."""
         try:
             mysql_config = self.config.mysql_config
-            connection_string = (
-                f"mysql+mysqlconnector://{mysql_config['user']}:{mysql_config['password']}"
-                f"@{mysql_config['host']}:{mysql_config['port']}/{mysql_config['database']}"
+            connection_url = URL.create(
+                "mysql+mysqlconnector", username=mysql_config["user"],
+                password=mysql_config["password"], host=mysql_config["host"],
+                port=mysql_config["port"], database=mysql_config["database"],
             )
-            self.mysql_engine = create_engine(connection_string)
+            self.mysql_engine = create_engine(connection_url, pool_pre_ping=True)
+            with self.mysql_engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
             self.logger.info("Successfully connected to MySQL")
         except Exception as e:
-            self.logger.error(f"Failed to connect to MySQL: {e}")
+            self.logger.error(f"Failed to connect to MySQL: {type(e).__name__}")
             raise
     
     def connect_bigquery(self) -> None:
@@ -60,74 +55,82 @@ class ETLPipeline:
             self.bq_client = bigquery.Client(project=self.config.project_id)
             self.logger.info("Successfully connected to BigQuery")
         except Exception as e:
-            self.logger.error(f"Failed to connect to BigQuery: {e}")
+            self.logger.error(f"Failed to connect to BigQuery: {type(e).__name__}")
             raise
     
     def get_last_processed_id(self, table_name: str) -> int:
-        """
-        Get the last processed ID for incremental loading.
-        Returns 0 if not found or on error.
-        """
-        try:
-            dataset_ref = self.bq_client.dataset(self.config.bigquery_config['dataset_id'])
-            table_ref = dataset_ref.table('etl_metadata')
-            query = f"""
-                SELECT last_processed_id 
-                FROM `{self.config.project_id}.{self.config.bigquery_config['dataset_id']}.etl_metadata`
-                WHERE table_name = '{table_name}'
-            """
-            query_job = self.bq_client.query(query)
-            result = query_job.result()
-            for row in result:
-                return row.last_processed_id
+        """Only a missing row means an initial cursor; API failures propagate."""
+        identifier(table_name)
+        table_id = f"{self.config.project_id}.{self.config.bigquery_config['dataset_id']}.etl_metadata"
+        job_config = bigquery.QueryJobConfig(query_parameters=[
+            bigquery.ScalarQueryParameter("table_name", "STRING", table_name)
+        ])
+        rows = list(self.bq_client.query(
+            f"SELECT last_processed_id FROM `{table_id}` WHERE table_name = @table_name",
+            job_config=job_config,
+        ).result())
+        if len(rows) > 1:
+            raise ValueError("Duplicate checkpoint rows")
+        if not rows:
             return 0
-        except Exception as e:
-            self.logger.warning(f"Could not get last processed ID for {table_name}: {e}")
-            return 0
-    
+        value = rows[0].last_processed_id
+        if not isinstance(value, int) or value < 0:
+            raise ValueError("Invalid checkpoint value")
+        return value
+
     def update_last_processed_id(self, table_name: str, last_id: int) -> None:
+        """Await the job; never silently overwrite progress with a smaller ID."""
+        identifier(table_name)
+        last_id = int(last_id)
+        if last_id < 0:
+            raise ValueError("Invalid checkpoint value")
+        table_id = f"{self.config.project_id}.{self.config.bigquery_config['dataset_id']}.etl_metadata"
+        query = f"""
+            MERGE `{table_id}` T
+            USING (SELECT @table_name AS table_name, @last_id AS last_processed_id) S
+            ON T.table_name = S.table_name
+            WHEN MATCHED THEN UPDATE SET
+                last_processed_id = GREATEST(T.last_processed_id, S.last_processed_id),
+                updated_at = CURRENT_TIMESTAMP()
+            WHEN NOT MATCHED THEN INSERT
+                (table_name, last_processed_id, created_at, updated_at)
+                VALUES (S.table_name, S.last_processed_id, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
         """
-        Update the last processed ID in metadata table.
-        Raises exception on failure.
-        """
-        try:
-            table_id = f"{self.config.project_id}.{self.config.bigquery_config['dataset_id']}.etl_metadata"
-            query = f"""
-                MERGE `{table_id}` T
-                USING (SELECT '{table_name}' as table_name, {last_id} as last_processed_id) S
-                ON T.table_name = S.table_name
-                WHEN MATCHED THEN
-                    UPDATE SET last_processed_id = S.last_processed_id, updated_at = CURRENT_TIMESTAMP()
-                WHEN NOT MATCHED THEN
-                    INSERT (table_name, last_processed_id, created_at, updated_at)
-                    VALUES (S.table_name, S.last_processed_id, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
-            """
-            self.bq_client.query(query)
-            self.logger.info(f"Updated last processed ID for {table_name} to {last_id}")
-        except Exception as e:
-            self.logger.error(f"Failed to update last processed ID: {e}")
-            raise
-    
+        job_config = bigquery.QueryJobConfig(query_parameters=[
+            bigquery.ScalarQueryParameter("table_name", "STRING", table_name),
+            bigquery.ScalarQueryParameter("last_id", "INT64", last_id),
+        ])
+        self.bq_client.query(query, job_config=job_config).result()
+
+    def ensure_dataset(self) -> None:
+        dataset_id = f"{self.config.project_id}.{self.config.bigquery_config['dataset_id']}"
+        dataset = bigquery.Dataset(dataset_id)
+        dataset.location = self.config.bigquery_config["location"]
+        self.bq_client.create_dataset(dataset, exists_ok=True)
+
     def extract_data(self, table_config: Dict[str, Any]) -> pd.DataFrame:
         """
         Extract data from MySQL.
         Returns a pandas DataFrame.
         """
         try:
-            table_name = table_config['mysql_table']
-            primary_key = table_config['primary_key']
+            table_name = identifier(table_config['mysql_table'])
+            primary_key = identifier(table_config['primary_key'])
             incremental = table_config['incremental']
             if incremental:
                 last_id = self.get_last_processed_id(table_name)
-                query = f"SELECT * FROM {table_name} WHERE {primary_key} > {last_id} ORDER BY {primary_key}"
+                query = text(f"SELECT * FROM `{table_name}` WHERE `{primary_key}` > :last_id ORDER BY `{primary_key}`")
+                params = {"last_id": last_id}
             else:
-                query = f"SELECT * FROM {table_name}"
+                query = text(f"SELECT * FROM `{table_name}`")
+                params = {}
             self.logger.info(f"Extracting data from {table_name}")
-            df = pd.read_sql(query, self.mysql_engine)
+            with self.mysql_engine.connect() as connection:
+                df = pd.read_sql(query, connection, params=params, coerce_float=False)
             self.logger.info(f"Extracted {len(df)} rows from {table_name}")
             return df
         except Exception as e:
-            self.logger.error(f"Failed to extract data from {table_name}: {e}")
+            self.logger.error(f"Failed to extract data from {table_name}: {type(e).__name__}")
             raise
     
     def transform_data(self, df: pd.DataFrame, transformations: List[Any]) -> pd.DataFrame:
@@ -163,7 +166,7 @@ class ETLPipeline:
             self.logger.info("Data transformations completed successfully")
             return df
         except Exception as e:
-            self.logger.error(f"Failed to transform data: {e}")
+            self.logger.error(f"Failed to transform data: {type(e).__name__}")
             raise
     
     def load_data(self, df: pd.DataFrame, table_config: Dict[str, Any]) -> int:
@@ -200,7 +203,7 @@ class ETLPipeline:
             self.logger.info(f"Loaded {job.output_rows} rows to {table_id}. Total rows: {table.num_rows}")
             return job.output_rows
         except Exception as e:
-            self.logger.error(f"Failed to load data to BigQuery: {e}")
+            self.logger.error(f"Failed to load data to BigQuery: {type(e).__name__}")
             raise
     
     def create_metadata_table(self) -> None:
@@ -221,7 +224,7 @@ class ETLPipeline:
             self.bq_client.create_table(table, exists_ok=True)
             self.logger.info("Metadata table created/verified")
         except Exception as e:
-            self.logger.error(f"Failed to create metadata table: {e}")
+            self.logger.error(f"Failed to create metadata table: {type(e).__name__}")
             raise
     
     def run_pipeline(self) -> bool:
@@ -235,7 +238,8 @@ class ETLPipeline:
             # Establish connections
             self.connect_mysql()
             self.connect_bigquery()
-            # Create metadata table
+            # Provision the dataset before its metadata table.
+            self.ensure_dataset()
             self.create_metadata_table()
             # Process each table
             for table_config in self.config.etl_tables:
@@ -252,7 +256,7 @@ class ETLPipeline:
                 rows_loaded = self.load_data(df, table_config)
                 # Update metadata for incremental loads
                 if table_config['incremental'] and rows_loaded > 0:
-                    primary_key = table_config['primary_key']
+                    primary_key = identifier(table_config['primary_key'])
                     last_id = df[primary_key].max()
                     self.update_last_processed_id(table_config['mysql_table'], last_id)
                 elapsed = time.time() - table_start
@@ -261,7 +265,7 @@ class ETLPipeline:
             self.logger.info(f"========== ETL PIPELINE COMPLETED in {total_elapsed:.2f}s ==========")
             return True
         except Exception as e:
-            self.logger.error(f"ETL pipeline failed: {e}")
+            self.logger.error(f"ETL pipeline failed: {type(e).__name__}")
             return False
         finally:
             # Clean up connections
