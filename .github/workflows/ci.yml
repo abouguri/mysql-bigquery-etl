@@ -6,12 +6,17 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -44,6 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Validate Terraform without cloud credentials
         run: |
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/infra:/infra" -w /infra --entrypoint sh hashicorp/terraform:1.13.5 -c 'terraform fmt -check && terraform init -backend=false -lockfile=readonly && terraform validate'

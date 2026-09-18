@@ -14,24 +14,32 @@
 <h1>From ETL script to a project you can defend in a senior interview.</h1>
 <p class="lead">An evidence-based improvement plan for <strong>mysql-bigquery-etl</strong>: correct data, reliable recovery, measurable performance, and a clear business outcome.</p>
 <span class="tag">Primary: Senior Data Engineer</span><span class="tag">Secondary: Data Platform Engineer</span><span class="tag">Stretch: Staff-level design discussion</span>
-<nav aria-label="Sections"><a href="#overview">Project</a><a href="#audit">Audit</a><a href="#architecture">Architecture</a><a href="#roadmap">Roadmap</a><a href="#proof">Evidence</a><a href="#career">CV &amp; interview</a><a href="#checklist">Tracker</a><a href="backlog.md">Implementation status</a></nav>
+<nav aria-label="Sections"><a href="#implementation">Current progress</a><a href="#overview">Project</a><a href="#audit">Audit</a><a href="#architecture">Architecture</a><a href="#roadmap">Roadmap</a><a href="#proof">Evidence</a><a href="#career">CV &amp; interview</a><a href="#checklist">Tracker</a><a href="backlog.md">Implementation status</a></nav>
 </header>
 <main>
+<section id="implementation">
+<div class="eyebrow">Implementation update / 18 September 2026</div><h2>Implemented locally. Cloud acceptance gates remain open.</h2>
+<p>The code now includes bounded MySQL snapshots, timestamp lookback, reconciliation and replay, strict schema/decimal contracts, staged publication and fencing, structured logging, and Terraform definitions for Cloud Run Jobs. The original audit below describes the starting point, not the current source.</p>
+<div class="grid"><article class="card"><div class="number">55 passing</div><h3>Local validation</h3><p>Includes a real disposable MySQL source. Five BigQuery integration tests are opt-in and have not been executed.</p></article><article class="card"><div class="number">80.6%</div><h3>Lower local peak memory</h3><p>At 1m synthetic rows, bounded processing used 150.32 MiB median peak RSS versus 772.95 MiB full-frame, with 3.9% greater median processing time. This excludes MySQL/BigQuery I/O.</p></article><article class="card"><div class="number">Pending</div><h3>Live cloud evidence</h3><p>Deployment, actual transaction/concurrency tests, IAM and alerts, cloud cost, and the freshness observation period still need the selected sandbox.</p></article></div>
+<p style="margin-top:20px">Review the <a href="../README.md">current architecture and quickstart</a>, <a href="backlog.md">open gates</a>, <a href="../benchmarks/results/summary.md">benchmark methodology/results</a>, <a href="demo.md">presentation guide</a>, and <a href="case-study.md">case study and supported CV wording</a>. Personal decision notes remain local in <code>docs/architecture-decisions.md</code>.</p>
+<img src="../benchmarks/results/comparison.svg" alt="Local benchmark comparing bounded versus full-frame processing memory and runtime; results exclude database and network I/O" style="width:100%;height:auto;background:white;border-radius:12px">
+</section>
+
 <section id="overview">
-<div class="eyebrow">01 / What you have</div><h2>A small batch ingestion system for analytics</h2>
+<div class="eyebrow">01 / Original baseline</div><h2>A small batch ingestion system for analytics</h2>
 <p>The Python application reads <strong>users, orders, and products from MySQL</strong>, transforms them in pandas, and loads them into Google BigQuery. Users and orders use an integer-ID checkpoint; products are read in full. Transformations normalize email, dates, categories and prices, calculate order totals, and assign order-size buckets.</p>
 <p><a href="../main.py">main.py</a> provides a command-line entry point. <a href="../server.py">server.py</a> exposes a Flask GET endpoint that runs the whole pipeline synchronously. Docker and deployment files target Cloud Run, with Cloud Scheduler configured to trigger every six hours. These are repository intentions; no running cloud deployment was inspected.</p>
 <div class="grid">
 <article class="card"><div class="number">Foundation</div><h3>Useful starting pieces</h3><p>Separate configuration and pipeline classes, transform hooks, metadata tracking, load-job waiting, non-root container user, secret support, and a basic CI workflow.</p></article>
-<article class="card"><div class="number">Prototype</div><h3>Current maturity</h3><p>The code demonstrates ETL concepts. Correctness under reruns, changing records, failures, and concurrent execution is not yet established. Tests cover configuration only.</p></article>
+<article class="card"><div class="number">Prototype</div><h3>Baseline maturity</h3><p>The code demonstrates ETL concepts. Correctness under reruns, changing records, failures, and concurrent execution is not yet established. Tests cover configuration only.</p></article>
 <article class="card"><div class="number">Ownership</div><h3>The strongest next signal</h3><p>Show that you can define guarantees, detect failures, recover safely, control costs, and explain tradeoffs using reproducible evidence.</p></article>
 </div>
 <div class="callout"><strong>Recommended portfolio story:</strong> “A recoverable MySQL-to-BigQuery analytics pipeline for commerce reporting, with tested replay semantics and measured freshness and cost.” Build an orders/revenue data mart so ingestion serves an observable business need.</div>
 <p class="muted">Assumption: “big positions” means senior data engineering or data platform roles. This can strengthen a candidacy; a repository alone does not establish staff-level organizational impact or replace production experience.</p>
 </section>
 <section id="audit">
-<div class="eyebrow">02 / Repository findings</div><h2>Fix correctness before adding infrastructure</h2>
-<p>Findings below come from source inspection. Severity describes the impact if this code processes real recurring workloads.</p>
+<div class="eyebrow">02 / Original repository findings</div><h2>Fix correctness before adding infrastructure</h2>
+<p>Findings below come from the original source inspection at commit <code>8a6f6a0</code>; consult the implementation update for current status. Severity describes the impact if this code processes real recurring workloads.</p>
 <div class="table-wrap"><table><thead><tr><th>Priority / finding</th><th>Repository evidence &amp; consequence</th><th>Required outcome</th></tr></thead><tbody>
 <tr><td><span class="priority">P0</span> · Full-load duplication</td><td><a href="../etl_pipeline.py">etl_pipeline.py</a>: <code>load_data()</code> always uses <code>WRITE_APPEND</code>. Products are full-read on every run, so successive runs repeat existing products.</td><td>Define snapshot replacement or key-based upsert semantics. Publish only validated snapshots; specify whether an empty source clears the target.</td></tr>
 <tr><td><span class="priority">P0</span> · Unsafe replay</td><td><code>run_pipeline()</code> loads rows before checkpointing. A failure in between replays rows into an append-only destination. <code>update_last_processed_id()</code> submits its query without waiting for completion.</td><td>Stage a batch; deduplicate and merge by key; commit destination changes and checkpoint together inside BigQuery. Await completion and test ambiguous outcomes.</td></tr>
@@ -45,7 +53,7 @@
 <tr><td>P1 · Operational confidence</td><td><a href="../tests/test_config.py">tests/test_config.py</a> contains two config tests. CI has no pipeline or integration tests. No infrastructure-as-code, alerts, or recovery runbook is present.</td><td>Add failure-oriented coverage, repeatable deployment, freshness alerts, and a demonstrated restore/replay procedure.</td></tr>
 <tr><td>P2 · Config and SQL hygiene</td><td>Connection URLs and SQL are interpolated. MySQL credentials are not validated up front. Secret injection uses lower-case secret names, while production SDK lookups expect uppercase names; deployment leaves the environment at its development default.</td><td>Choose one secret retrieval contract, construct URLs safely, bind SQL values, allowlist identifiers, validate all required settings, and redact errors.</td></tr>
 </tbody></table></div>
-<div class="callout warn"><strong>Validation boundary:</strong> no cloud or database connections were made. The test run could not start because <code>python</code> is unavailable and <code>python3 -m pytest</code> reports that pytest is not installed. Findings are source-based; existing tests have not been reported as passing.</div>
+<div class="callout warn"><strong>Initial validation boundary (before implementation):</strong> no cloud or database connections were made. The test run could not start because <code>python</code> is unavailable and <code>python3 -m pytest</code> reports that pytest is not installed. Findings are source-based; existing tests have not been reported as passing.</div>
 </section>
 <section id="architecture">
 <div class="eyebrow">03 / Target design</div><h2>A bounded, recoverable batch pipeline</h2>

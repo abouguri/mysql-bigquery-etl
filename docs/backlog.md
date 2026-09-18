@@ -17,6 +17,17 @@ This is the versioned issue register for the roadmap. Check validation evidence 
 | ETL-11 | P1 | Infrastructure, scoped identities, alerts and runbooks | Terraform prepared; apply and alert delivery require sandbox |
 | ETL-12 | P1 | Opt-in real BigQuery correctness/failure tests | Written; sandbox/project/budget required to execute |
 | ETL-13 | P1 | Revenue mart, reconciliation and performance/cost evidence | SQL and local 100k/1m evidence ready; cloud reconciliation/cost pending |
-| ETL-14 | P2 | README, release, demo and measured CV case study | Open |
+| ETL-14 | P2 | README, release, demo and measured CV case study | Written for local preview; live/recorded demo and independent reproduction pending |
 
 External requirements: user-selected cloud sandbox and test spend cap; cloud credentials; a real observation window for freshness claims. Do not invent results while those are unavailable.
+
+## External gates that remain open
+
+1. Select the sandbox project, approved test spend and source network; provide authenticated access through the normal local tooling.
+2. Execute the five opt-in BigQuery tests, then add any failure scenarios exposed by real service behavior.
+3. Apply the reviewed Terraform plan; validate source TLS, unauthorized-invoker rejection, Scheduler execution and notification delivery before enabling schedules.
+4. Measure end-to-end extraction/load/merge, source impact and cloud costs; compare partition/clustering layouts with an identical workload.
+5. Observe the proposed freshness objective over a real 30-day window. Do not substitute a short demo for that history.
+6. Record the cloud failure/recovery demo and have another engineer reproduce it.
+
+Local implementation does not close these gates. The original six milestones remain partially verified until their external acceptance criteria are met.

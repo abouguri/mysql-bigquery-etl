@@ -1,147 +1,116 @@
-# MySQL → BigQuery ETL Pipeline
+# MySQL → BigQuery: recoverable commerce ingestion
 
-Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and developer-friendly ETL pipeline that extracts data from MySQL, transforms it, and loads it into Google BigQuery. Perfect for analytics, reporting, and data warehousing.
+[![CI](https://github.com/abouguri/mysql-bigquery-etl/actions/workflows/ci.yml/badge.svg)](https://github.com/abouguri/mysql-bigquery-etl/actions/workflows/ci.yml)
 
----
+A Python batch pipeline that stages and validates MySQL commerce data before publishing it to BigQuery. It combines bounded extraction, explicit data contracts, transactional publication, writer fencing and reconciliation with a reproducible local test/benchmark environment.
 
-## Current correctness scope
+**Status: locally validated preview.** The suite has 55 passing tests with the disposable MySQL fixture; five real-BigQuery integration tests require explicit opt-in and have not been executed. Terraform validates, but cloud deployment, live concurrency guarantees, alerts and billing have not been verified. See [open gates](docs/backlog.md).
 
-The worker stages and validates batches before publishing destination changes,
-checkpoint progress and run completion in one BigQuery transaction. It uses
-versioned state tables, stable job IDs and a fenced writer lease. Products use
-snapshot replacement, including an intentionally empty source. Users and orders
-use bounded timestamp-window extraction with a 24-hour lookback and key-based upserts.
-`python main.py --reconcile` repairs deletes and changes outside the lookback from
-consistent per-table snapshots. Bounded replay does not move the live checkpoint. Explicit version-1 commerce schemas reject drift,
-invalid required values and duplicate batch keys. Money uses decimal arithmetic.
+## Why this project exists
 
-Local tests pass; the distributed guarantees still require the opt-in real-cloud
-suite. See [recovery and cloud validation](docs/runbooks/recovery.md). Existing
-warehouse tables require a deliberate schema/data migration; use a fresh sandbox
-for first validation.
+Scheduled ingestion is easy to demonstrate when nothing fails. The interesting problems are a load that succeeds before its acknowledgement arrives, concurrent workers, mutable source records, partial snapshots and memory growth. This project makes those failure paths and tradeoffs explicit rather than treating a successful load log as proof of correctness.
 
-## Features
-- Incremental & full data loads
-- Modular transformations (add your own!)
-- Configurable via `.env` or runtime-injected Secret Manager values
-- Logging, error handling, and metadata tracking
-- Ready for local dev, Docker, or Google Cloud Build
+The demo uses users, single-product orders and products. Its analytics output is daily USD revenue by current product category. [Business definitions and reconciliation](docs/analytics.md) state the grain, refund policy and limitations.
 
----
+## Architecture
 
-## Prerequisites
-- Python 3.11+
-- MySQL server (local or remote)
-- Google Cloud project with BigQuery enabled
-- [gcloud CLI](https://cloud.google.com/sdk/docs/install) (for authentication)
-
----
-
-## Reproducible development checks
-
-Docker and Docker Compose provide the same Python 3.11 runtime as CI:
-
-```sh
-make test          # cloud-free unit and regression tests
-make integration   # disposable MySQL + deterministic commerce fixtures
-make clean-fixtures
+```mermaid
+flowchart LR
+    S[Cloud Scheduler] --> J[Cloud Run Job]
+    M[MySQL per-table snapshot] --> P[Bounded keyset pages]
+    J --> P
+    P --> V[Schema and decimal validation]
+    V --> T[Run-specific BigQuery staging]
+    T --> X[Publication transaction]
+    F[Owner / generation / lease state] --> X
+    X --> D[Destination snapshot or upsert]
+    X --> C[Checkpoint and run completion]
+    D --> A[Revenue model and quality checks]
+    J --> O[Structured logs and alerts]
 ```
 
-For native Python 3.11 development, install `requirements-dev.txt` and run
-`python -m pytest`. `requirements.in` and `requirements-dev.in` are dependency
-inputs; `make lock` regenerates exact transitive pins. Remaining work and validation gates are tracked in [the backlog](docs/backlog.md).
-See [baseline evidence](docs/evidence/baseline.md) and [the roadmap](docs/portfolio-roadmap.html).
+- **Normal ingestion:** users/orders read a fixed `updated_at` window with a configurable 24-hour lookback. Keyset pages cover the window inside a consistent MySQL snapshot. Products use complete snapshots.
+- **Publication:** staged pages load under stable job IDs. One BigQuery transaction checks and mutates writer ownership, validates staged keys/counts, publishes the target change, advances progress and records success.
+- **Reconciliation:** complete per-table snapshots repair hard deletes and changes outside the lookback. Empty valid snapshots intentionally clear the destination.
+- **Replay:** current source rows in a selected time range are upserted without advancing the live watermark. Older source timestamps cannot overwrite newer target timestamps.
+- **Operations:** separate ingestion/reconciliation Cloud Run Jobs, private source networking, verified MySQL TLS, scoped IAM, pinned image/secret versions and paused-by-default schedules are defined in Terraform.
 
-## Quickstart
-1. **Clone the repo:**
-   ```sh
-   git clone https://github.com/abouguri/mysql-bigquery-etl.git
-   cd mysql-bigquery-etl
-   ```
-2. **Set up Python & venv:**
-   ```sh
-   pyenv install 3.11.16  # if needed
-   pyenv local 3.11.16
-   python -m venv venv
-   source venv/bin/activate
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-3. **Configure environment:**
-   - Copy and edit the example:
-     ```sh
-     cp .env.example .env
-     # Edit .env with your MySQL & GCP details
-     ```
-4. **Authenticate with Google Cloud:**
-   ```sh
-   gcloud auth application-default login
-   gcloud config set project <your-gcp-project-id>
-   ```
-5. **Create your BigQuery dataset:**
-   - Go to the [BigQuery Console](https://console.cloud.google.com/bigquery) and create the dataset (e.g., `mysql_etl`).
+The fencing and transaction guarantees are **designs implemented in code, awaiting live BigQuery validation**. Local client tests cannot prove distributed behavior.
 
-6. **Run the pipeline!**
-   ```sh
-   python main.py
-   ```
+## Run local tests
 
----
+Prerequisites: Docker and Docker Compose. No cloud credentials are required.
 
-## Configuration
-- All config is in `config/config.py` and `.env`.
-- Uses the same environment-variable contract locally and in production. Cloud Run injects Secret Manager values; the application does not fetch secrets itself.
-- Production validates required connection settings and SQL identifiers before opening clients. Error logs contain exception types, not raw driver errors or credentials.
-- Edit `etl_tables` in `Config` to add/remove tables or transformations.
+```sh
+make test            # offline unit/failure tests; MySQL/cloud cases skip
+make integration     # seeded disposable MySQL plus the full local suite
+make clean-fixtures  # remove synthetic fixture containers/data
+```
 
----
+The fixture contains two users, two products and three orders totaling **309.85 USD**. MySQL binds only to `127.0.0.1:3307`; set `MYSQL_TEST_PORT` if needed. Its data lives in tmpfs and is intentionally discarded on teardown. Local fixture credentials are not production credentials.
 
-## Cloud deployment
+Native development uses Python **3.11.16**:
 
-Use [the deployment runbook](docs/runbooks/deployment.md) for Terraform bootstrap,
-image builds, pinned secret versions, TLS/network prerequisites and validation.
-Cloud Build tests and publishes images; Terraform owns Cloud Run Jobs and Scheduler.
-Schedules default to paused. The legacy `server.py` now invokes the CLI; it no
-longer serves HTTP. Cloud deployment and alert delivery remain unverified.
+```sh
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
 
-## Docker & Cloud Build
-- Build and run with Docker:
-  ```sh
-  docker build -t mysql-bigquery-etl .
-  docker run --env-file .env mysql-bigquery-etl
-  ```
-- Use `cloudbuild.yaml` for Google Cloud Build CI/CD.
+`requirements.in` files describe dependencies; `make lock` regenerates exact transitive pins. The container base is pinned by digest. CI runs static checks, offline tests, MySQL integration and Terraform validation without cloud credentials.
 
----
+## Run against an approved cloud sandbox
 
-## Extending & Hacking
-- Add new transformations: just add a function or string key in `etl_pipeline.py`.
-- Add more tables: update `etl_tables` in `Config`.
-- Use your own secrets backend: extend `get_secret` in `Config`.
+Copy `.env.example` to `.env`, set the sandbox project/source connection and authenticate with Application Default Credentials. Do not commit credentials. For the Compose source, keep `docker compose up -d mysql` running before using the host CLI.
 
----
+```sh
+python main.py
+python main.py --reconcile
+python main.py --table orders \
+  --replay-from 2026-01-01T00:00:00Z \
+  --replay-until 2026-01-02T00:00:00Z
+```
 
-## Troubleshooting
-- **MySQL connection errors?**
-  - Is MySQL running and accessible from your machine?
-  - Are your credentials in `.env` correct?
-- **BigQuery errors?**
-  - Is your dataset created?
-  - Is your GCP project/billing enabled?
-- **Dependency issues?**
-  - Use `pip install --force-reinstall --no-cache-dir -r requirements.txt`
-  - Downgrade numpy if needed: `pip install 'numpy<2'`
+These commands create/query/load BigQuery data and incur cloud usage. Select a sandbox and spend limit first. Existing warehouse tables need a deliberate schema/data migration: incompatible schemas and duplicate target keys fail closed. State uses `etl_state_v2` and `etl_runs_v2`; legacy state is not silently migrated.
 
----
+[Deployment instructions](docs/runbooks/deployment.md) cover Terraform bootstrap, secrets, VPC/TLS, image builds, manual validation, rollback and teardown. [Recovery instructions](docs/runbooks/recovery.md) explain unknown job outcomes and lease expiry. The legacy `server.py` invokes the CLI and no longer exposes HTTP execution.
 
-## Contributing
-PRs, issues, and ideas are welcome! Make it yours, make it better, and have fun.
+## Measured local evidence
 
----
+At one million synthetic rows, 10,000-row pages used **150.32 MiB median peak process RSS**, versus **772.95 MiB** for a full DataFrame running the same transforms/contracts: **80.6% less memory**, with **3.9% greater median processing time**. Five fresh-process samples per configuration ran under two CPUs and 2 GiB container memory.
+
+![Local memory/runtime benchmark](benchmarks/results/comparison.svg)
+
+These numbers measure generation, transformation, validation and reconciliation in Python. They exclude MySQL and BigQuery I/O and do not establish end-to-end throughput, original-code speedup, production capacity or cloud cost. [Methodology](benchmarks/README.md), [raw samples](benchmarks/results/local.csv), [summary](benchmarks/results/summary.md) and source hashes are included.
+
+## Guarantees and limits
+
+| Area | Implemented behavior / boundary |
+|---|---|
+| Retry identity | Resolve the same operation job ID after uncertain acknowledgement; no fresh ID invented on retry |
+| Publication | Data, checkpoint, owner fencing and success record share a transaction; live-cloud verification pending |
+| Source consistency | Consistent per-table InnoDB snapshots; no cross-table snapshot guarantee |
+| Change capture | Source-maintained UTC timestamps plus lookback; arbitrary late commits require reconciliation |
+| Deletes | Full reconciliation repairs current state; no historical delete/event stream |
+| Memory | Runtime pages source/staging data; local processing benchmark measured separately from network I/O |
+| Data quality | Explicit required schemas, exact decimal money, unique keys; reject the batch on invalid data |
+| Concurrency | Fixed 30-minute lease; no heartbeat. Jobs have a 25-minute timeout; stale publication must fail |
+| Retention | Staging expires after one day; target/state/audit retention requires an operator policy |
+| Business model | One product per order, USD, UTC, current categories; no multi-line carts, SCD history or FX |
+
+Do not describe this as end-to-end exactly-once delivery or production-proven reliability. Holding a source snapshot while staging bounds memory but can increase MySQL undo retention; measure that before scaling.
+
+## Explore and present it
+
+- [HTML roadmap and current progress](docs/portfolio-roadmap.html)
+- [Implementation backlog](docs/backlog.md) and [validation history](docs/evidence/baseline.md)
+- [Five-minute demo](docs/demo.md) and [case study / CV wording](docs/case-study.md)
+- [Local incident writeup](docs/evidence/readiness-incident.md)
+- [Analytics SQL](sql/revenue_daily.sql), [quality checks](sql/quality_checks.sql) and [cloud cost worksheet](docs/evidence/cost-template.csv)
+
+Architecture discussion notes are maintained locally in the ignored `docs/architecture-decisions.md` companion. The public runbooks, evidence and case study document the implemented tradeoffs.
 
 ## License
-MIT
 
----
-
-> Made with Python and caffeine.
+[MIT](LICENSE).
