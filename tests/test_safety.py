@@ -38,7 +38,6 @@ def test_metadata_bootstrap_order(pipeline):
     pipeline.connect_bigquery = Mock()
     pipeline.ensure_dataset = lambda: calls.append("dataset")
     pipeline.create_metadata_table = lambda: calls.append("metadata")
-    pipeline.extract_data = Mock(side_effect=RuntimeError("stop"))
     assert pipeline.run_pipeline() is False
     assert calls == ["dataset", "metadata"]
 

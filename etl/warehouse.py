@@ -10,7 +10,6 @@ import logging
 import time
 import uuid
 
-import pandas as pd
 from google.api_core import exceptions
 from google.cloud import bigquery
 
@@ -23,6 +22,7 @@ class Claim:
     run_id: str
     generation: int
     lower_id: int
+    lower_time: datetime | None = None
 
 
 class Warehouse:
@@ -65,7 +65,7 @@ class Warehouse:
 
     @staticmethod
     def params(**values):
-        types = {str: "STRING", int: "INT64"}
+        types = {str: "STRING", int: "INT64", datetime: "TIMESTAMP", type(None): "TIMESTAMP"}
         return [bigquery.ScalarQueryParameter(k, types[type(v)], v) for k, v in values.items()]
 
     def bootstrap(self, tables):
@@ -76,14 +76,14 @@ class Warehouse:
         selections = " UNION ALL ".join(
             f"SELECT '{name}' AS table_name, 0 AS watermark_id, 0 AS generation, "
             "CAST(NULL AS STRING) AS owner, TIMESTAMP '1970-01-01' AS lease_until, "
-            "CAST(NULL AS STRING) AS last_run_id" for name in names
+            "CAST(NULL AS STRING) AS last_run_id, CAST(NULL AS TIMESTAMP) AS watermark_at" for name in names
         )
         run_id = uuid.uuid4().hex
-        self.query(f"CREATE TABLE IF NOT EXISTS `{self.prefix}.etl_state_v1` AS {selections}", run_id, "state")
-        self.query(f"""CREATE TABLE IF NOT EXISTS `{self.prefix}.etl_runs_v1` (
+        self.query(f"CREATE TABLE IF NOT EXISTS `{self.prefix}.etl_state_v2` AS {selections}", run_id, "state")
+        self.query(f"""CREATE TABLE IF NOT EXISTS `{self.prefix}.etl_runs_v2` (
             run_id STRING, table_name STRING, status STRING,
             started_at TIMESTAMP, finished_at TIMESTAMP, row_count INT64,
-            lower_id INT64, upper_id INT64)
+            lower_id INT64, upper_id INT64, lower_time TIMESTAMP, upper_time TIMESTAMP)
         """, run_id, "runs")
 
     def acquire(self, table):
@@ -91,45 +91,41 @@ class Warehouse:
         run_id = uuid.uuid4().hex
         rows = list(self.query(f"""
             BEGIN TRANSACTION;
-            ASSERT (SELECT COUNT(*) FROM `{self.prefix}.etl_state_v1`
+            ASSERT (SELECT COUNT(*) FROM `{self.prefix}.etl_state_v2`
                     WHERE table_name = @table) = 1 AS 'Invalid state cardinality';
-            UPDATE `{self.prefix}.etl_state_v1`
+            UPDATE `{self.prefix}.etl_state_v2`
             SET owner = @run_id, generation = generation + 1,
                 lease_until = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL @ttl SECOND)
             WHERE table_name = @table AND lease_until <= CURRENT_TIMESTAMP();
             ASSERT @@row_count = 1 AS 'Table already leased';
-            INSERT INTO `{self.prefix}.etl_runs_v1`
-                (run_id, table_name, status, started_at, lower_id)
-            SELECT @run_id, @table, 'RUNNING', CURRENT_TIMESTAMP(), watermark_id
-            FROM `{self.prefix}.etl_state_v1` WHERE table_name = @table;
+            INSERT INTO `{self.prefix}.etl_runs_v2`
+                (run_id, table_name, status, started_at, lower_id, lower_time)
+            SELECT @run_id, @table, 'RUNNING', CURRENT_TIMESTAMP(), watermark_id, watermark_at
+            FROM `{self.prefix}.etl_state_v2` WHERE table_name = @table;
             COMMIT TRANSACTION;
-            SELECT generation, watermark_id FROM `{self.prefix}.etl_state_v1`
+            SELECT generation, watermark_id, watermark_at FROM `{self.prefix}.etl_state_v2`
             WHERE table_name = @table AND owner = @run_id;
         """, run_id, "acquire", self.params(table=table, run_id=run_id, ttl=self.lease_seconds)))
         if len(rows) != 1:
             raise ValueError("Lease acquisition outcome is not current")
-        return Claim(table, run_id, int(rows[0].generation), int(rows[0].watermark_id))
+        return Claim(table, run_id, int(rows[0].generation), int(rows[0].watermark_id), getattr(rows[0], "watermark_at", None))
 
     def publish(self, frame, table, claim, upper_id):
-        """Stage an entire batch, then atomically publish it and its progress."""
+        return self.publish_batches(iter([frame]), table, claim, upper_id)
+
+    def publish_batches(self, batches, table, claim, upper_id, upper_time=None):
+        """Bound memory to one validated page; publish only after all loads succeed."""
         if claim.table != table["mysql_table"]:
             raise ValueError("Claim belongs to another table")
         key = identifier(table["primary_key"])
         target = f"{self.prefix}.{identifier(table['bigquery_table'])}"
-        if key not in frame or frame[key].isna().any() or frame[key].duplicated().any():
-            raise ValueError("Batch keys must be present, non-null and unique")
-        columns = [identifier(name) for name in frame.columns]
-        if not columns or len(columns) != len(set(columns)):
-            raise ValueError("Invalid batch columns")
         if upper_id < claim.lower_id:
             raise ValueError("Checkpoint regression")
         stage = f"{self.prefix}.etl_stage_{claim.table}_{claim.run_id}"
-        # Empty frames need a real schema. Source dtypes alone are not sufficient.
         schema = table.get("schema")
         if schema is None:
             raise ValueError("Explicit target schema is required")
-        if columns != [field.name for field in schema]:
-            raise ValueError("Batch does not match its ordered schema")
+        columns = [identifier(field.name) for field in schema]
         stage_table = bigquery.Table(stage, schema=schema)
         stage_table.expires = datetime.now(timezone.utc) + timedelta(days=1)
         self.client.create_table(stage_table, exists_ok=True)
@@ -137,17 +133,25 @@ class Warehouse:
         actual = self.client.get_table(target).schema
         if [(x.name, x.field_type, x.mode) for x in actual] != [(x.name, x.field_type, x.mode) for x in schema]:
             raise ValueError("Destination schema migration required")
-        if not frame.empty:
-            config = bigquery.LoadJobConfig(schema=schema, write_disposition="WRITE_TRUNCATE")
-            job_id = f"etl_{claim.run_id}_load"
+        row_count = 0
+        for index, frame in enumerate(batches):
+            if list(frame.columns) != columns:
+                raise ValueError("Batch does not match its ordered schema")
+            if key not in frame or frame[key].isna().any() or frame[key].duplicated().any():
+                raise ValueError("Batch keys must be present, non-null and unique")
+            if frame.empty:
+                continue
+            config = bigquery.LoadJobConfig(schema=schema, write_disposition="WRITE_APPEND")
+            job_id = f"etl_{claim.run_id}_load_{index}"
             self._resolve(job_id, lambda: self.client.load_table_from_dataframe(
                 frame, stage, job_config=config, job_id=job_id, location=self.location,
             ))
+            row_count += len(frame)
         quoted = ", ".join(f"`{col}`" for col in columns)
         if table["incremental"]:
             updates = ", ".join(f"T.`{col}` = S.`{col}`" for col in columns if col != key)
             mutation = f"""MERGE `{target}` T USING `{stage}` S ON T.`{key}` = S.`{key}`
-                WHEN MATCHED THEN UPDATE SET {updates}
+                WHEN MATCHED AND S.updated_at >= T.updated_at THEN UPDATE SET {updates}
                 WHEN NOT MATCHED THEN INSERT ({quoted})
                 VALUES ({', '.join('S.`' + col + '`' for col in columns)});"""
         else:
@@ -155,10 +159,11 @@ class Warehouse:
         # Mutate the lease row in this transaction, rather than checking it externally.
         self.query(f"""
             BEGIN TRANSACTION;
-            ASSERT (SELECT COUNT(*) FROM `{self.prefix}.etl_state_v1`
+            ASSERT (SELECT COUNT(*) FROM `{self.prefix}.etl_state_v2`
                     WHERE table_name = @table) = 1 AS 'Invalid state cardinality';
-            UPDATE `{self.prefix}.etl_state_v1`
+            UPDATE `{self.prefix}.etl_state_v2`
             SET watermark_id = @upper_id, last_run_id = @run_id,
+                watermark_at = IF(@upper_time IS NULL, watermark_at, GREATEST(COALESCE(watermark_at, @upper_time), @upper_time)),
                 owner = NULL, lease_until = TIMESTAMP '1970-01-01'
             WHERE table_name = @table AND owner = @run_id AND generation = @generation
                 AND watermark_id = @lower_id AND lease_until > CURRENT_TIMESTAMP();
@@ -168,14 +173,14 @@ class Warehouse:
             ASSERT (SELECT COUNT(*) - COUNT(DISTINCT `{key}`) FROM `{stage}`) = 0 AS 'Duplicate key';
             ASSERT (SELECT COUNT(*) - COUNT(DISTINCT `{key}`) FROM `{target}`) = 0 AS 'Target key corruption';
             {mutation}
-            UPDATE `{self.prefix}.etl_runs_v1`
+            UPDATE `{self.prefix}.etl_runs_v2`
                 SET status = 'SUCCEEDED', finished_at = CURRENT_TIMESTAMP(),
-                    row_count = @rows, upper_id = @upper_id
+                    row_count = @rows, upper_id = @upper_id, upper_time = @upper_time
                 WHERE run_id = @run_id AND table_name = @table;
             ASSERT @@row_count = 1 AS 'Invalid run cardinality';
             COMMIT TRANSACTION;
         """, claim.run_id, "publish", self.params(
             table=claim.table, run_id=claim.run_id, generation=claim.generation,
-            lower_id=claim.lower_id, upper_id=int(upper_id), rows=len(frame),
+            lower_id=claim.lower_id, upper_id=int(upper_id), rows=row_count, upper_time=upper_time,
         ))
-        return len(frame)
+        return row_count

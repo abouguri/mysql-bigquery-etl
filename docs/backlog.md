@@ -9,9 +9,9 @@ This is the versioned issue register for the roadmap. Check validation evidence 
 | ETL-03 | P0 | Await metadata jobs; atomic data/checkpoint publication | Implemented atomic publication; cloud gate pending |
 | ETL-04 | P0 | Correct full-snapshot and empty-source semantics | Implemented; cloud replay gate pending |
 | ETL-05 | P0 | Writer fencing, overlap and stale publication tests | BigQuery transaction protocol implemented; cloud gate pending |
-| ETL-06 | P0 | Updates/deletes and source cursor contract | Open |
+| ETL-06 | P0 | Updates/deletes and source cursor contract | Timestamp lookback + full reconciliation implemented; MySQL tests passing |
 | ETL-07 | P1 | Bootstrap order, secret/config contract, URL/SQL hygiene | Implemented; local tests, cloud bootstrap gate pending |
-| ETL-08 | P1 | Bounded extraction and fixed run bounds | Open |
+| ETL-08 | P1 | Bounded extraction and fixed run bounds | Implemented and tested against concurrent MySQL changes |
 | ETL-09 | P1 | Schema, exact money and fail-closed transformations | Implemented; local contract tests passing |
 | ETL-10 | P1 | Job runtime, deployment scripts and build isolation | Open |
 | ETL-11 | P1 | Infrastructure, scoped identities, alerts and runbooks | Open |

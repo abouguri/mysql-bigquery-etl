@@ -36,3 +36,7 @@ The mounted-source suite against the disposable MySQL fixture now reports **21 p
 ## Task 3 result
 
 The publication/contract implementation reports **37 passed, 4 skipped** against the disposable MySQL fixture. No expected failures remain. The four skips are explicit real-BigQuery gates (snapshot replay/empty source, stale owner, concurrent acquisition and upsert replay). Decimal revenue from the actual MySQL fixture reconciles to 309.85. Unknown job outcomes reuse the same job ID in client tests; failed staging never reaches publication. These tests do not establish live BigQuery transaction guarantees.
+
+## Task 4 result
+
+**50 passed, 4 skipped** after replacing the runtime's unbounded extraction path with paged consistent snapshots. MySQL integration tests cover timestamp ties, concurrent source changes, late records, deletes, invalid primary keys, NULL timestamp visibility and bounded replay. Page failures cannot publish a partial snapshot in client tests. The four live BigQuery gates remain unexecuted.

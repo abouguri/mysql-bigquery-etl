@@ -54,7 +54,7 @@ def test_real_snapshot_replay_and_empty_source(cloud):
 def test_real_expired_owner_cannot_publish(cloud):
     client, warehouse, table, frame = cloud
     old = warehouse.acquire('products')
-    client.query(f"UPDATE `{warehouse.prefix}.etl_state_v1` SET lease_until = TIMESTAMP '1970-01-01' WHERE table_name = 'products'", location=warehouse.location).result()
+    client.query(f"UPDATE `{warehouse.prefix}.etl_state_v2` SET lease_until = TIMESTAMP '1970-01-01' WHERE table_name = 'products'", location=warehouse.location).result()
     current = warehouse.acquire('products')
     with pytest.raises(BadRequest):
         warehouse.publish(frame, table, old, 1)

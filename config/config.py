@@ -41,9 +41,19 @@ class Config:
             raise ValueError("MYSQL_PORT must be an integer") from None
         if not 1 <= port <= 65535:
             raise ValueError("MYSQL_PORT must be between 1 and 65535")
+        if self.batch_size <= 0 or self.lookback_seconds < 0:
+            raise ValueError("Invalid batching settings")
         for table in self.etl_tables:
             for name in ("mysql_table", "bigquery_table", "primary_key"):
                 identifier(table[name])
+
+    @property
+    def batch_size(self):
+        return int(os.getenv("ETL_BATCH_SIZE", "10000"))
+
+    @property
+    def lookback_seconds(self):
+        return int(os.getenv("ETL_LOOKBACK_SECONDS", "86400"))
 
     @property
     def mysql_config(self):

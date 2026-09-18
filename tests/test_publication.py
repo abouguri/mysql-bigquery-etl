@@ -25,14 +25,14 @@ def test_snapshot_is_published_with_fence_and_checkpoint(publication):
     claim = Claim('products', 'a'*32, 1, 0)
     assert warehouse.publish(frame, table, claim, 1) == 1
     sql = client.query.call_args.args[0]
-    assert sql.index('BEGIN TRANSACTION') < sql.index('UPDATE `fixture-project.fixture.etl_state_v1`')
+    assert sql.index('BEGIN TRANSACTION') < sql.index('UPDATE `fixture-project.fixture.etl_state_v2`')
     assert sql.index('DELETE FROM') < sql.index('COMMIT TRANSACTION')
     assert 'generation = @generation' in sql
     assert 'watermark_id = @lower_id' in sql
     assert 'lease_until > CURRENT_TIMESTAMP()' in sql
     assert 'ASSERT @@row_count = 1' in sql
     assert 'MERGE' not in sql
-    assert client.load_table_from_dataframe.call_args.kwargs['job_config'].write_disposition == 'WRITE_TRUNCATE'
+    assert client.load_table_from_dataframe.call_args.kwargs['job_config'].write_disposition == 'WRITE_APPEND'
     client.load_table_from_dataframe.return_value.result.assert_called_once()
 
 
@@ -82,3 +82,25 @@ def test_acquire_reads_committed_generation():
     client.query.return_value.result.return_value = [SimpleNamespace(generation=2, watermark_id=10)]
     claim = Warehouse(client, 'fixture-project', 'fixture', 'US').acquire('users')
     assert (claim.generation, claim.lower_id) == (2, 10)
+
+
+def test_pages_load_independently_with_stable_job_ids(publication):
+    client, warehouse, table, frame = publication
+    other = frame.copy()
+    other['product_id'] = 2
+    assert warehouse.publish_batches(iter([frame, other]), table, Claim('products', 'f'*32, 1, 0), 2) == 2
+    ids = [call.kwargs['job_id'] for call in client.load_table_from_dataframe.call_args_list]
+    assert ids == [f"etl_{'f'*32}_load_0", f"etl_{'f'*32}_load_1"]
+    params = client.query.call_args.kwargs['job_config'].query_parameters
+    assert next(p.value for p in params if p.name == 'rows') == 2
+
+
+def test_later_page_failure_does_not_publish_partial_snapshot(publication):
+    client, warehouse, table, frame = publication
+    def pages():
+        yield frame
+        raise ValueError('page extraction failed')
+    with pytest.raises(ValueError, match='extraction failed'):
+        warehouse.publish_batches(pages(), table, Claim('products', 'f'*32, 1, 0), 2)
+    client.load_table_from_dataframe.assert_called_once()
+    client.query.assert_not_called()

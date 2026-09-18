@@ -10,8 +10,9 @@ The worker stages and validates batches before publishing destination changes,
 checkpoint progress and run completion in one BigQuery transaction. It uses
 versioned state tables, stable job IDs and a fenced writer lease. Products use
 snapshot replacement, including an intentionally empty source. Users and orders
-currently extract by ID and upsert by key; updates and deletes still require the
-next cursor/reconciliation task. Explicit version-1 commerce schemas reject drift,
+use bounded timestamp-window extraction with a 24-hour lookback and key-based upserts.
+`python main.py --reconcile` repairs deletes and changes outside the lookback from
+consistent per-table snapshots. Bounded replay does not move the live checkpoint. Explicit version-1 commerce schemas reject drift,
 invalid required values and duplicate batch keys. Money uses decimal arithmetic.
 
 Local tests pass; the distributed guarantees still require the opt-in real-cloud

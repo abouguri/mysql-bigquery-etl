@@ -29,15 +29,17 @@ def test_seeded_source():
 def test_source_frames_meet_commerce_contracts(monkeypatch):
     from etl_pipeline import ETLPipeline
     from etl.contracts import validate
+    from etl.source import Source
     monkeypatch.setenv('GCP_PROJECT_ID', 'fixture-project')
     pipeline = ETLPipeline()
     pipeline.connect_mysql()
     try:
         for table in pipeline.config.etl_tables:
-            source = pipeline.extract_data(table)
-            output = validate(pipeline.transform_data(source, table['transformations']), table['mysql_table'])
-            assert len(output) == len(source)
-            if table['mysql_table'] == 'orders':
-                assert sum(output.total_amount) == Decimal('309.85')
+            with Source(pipeline.mysql_engine).snapshot(table, full=True) as window:
+                source = next(window.batches)
+                output = validate(pipeline.transform_data(source, table['transformations']), table['mysql_table'])
+                assert len(output) == len(source)
+                if table['mysql_table'] == 'orders':
+                    assert sum(output.total_amount) == Decimal('309.85')
     finally:
         pipeline.mysql_engine.dispose()

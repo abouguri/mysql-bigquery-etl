@@ -2,13 +2,13 @@
 import logging
 import time
 
-import pandas as pd
 from google.cloud import bigquery
 from sqlalchemy import URL, create_engine, text
 
-from config.config import Config, identifier
+from config.config import Config
 from etl.contracts import schema, transform, validate
 from etl.warehouse import Warehouse
+from etl.source import Source
 
 
 class ETLPipeline:
@@ -46,42 +46,42 @@ class ETLPipeline:
     def create_metadata_table(self):
         self.warehouse.bootstrap(self.config.etl_tables)
 
-    def extract_data(self, table, last_id=0):
-        name, key = identifier(table['mysql_table']), identifier(table['primary_key'])
-        sql = f"SELECT * FROM `{name}`"
-        parameters = {}
-        if table['incremental']:
-            sql += f" WHERE `{key}` > :last_id"
-            parameters['last_id'] = last_id
-        sql += f" ORDER BY `{key}`"
-        with self.mysql_engine.connect() as connection:
-            return pd.read_sql(text(sql), connection, params=parameters, coerce_float=False)
-
     def transform_data(self, frame, transformations):
         return transform(frame, transformations)
 
-    def load_data(self, frame, table, claim, upper_id):
-        contract = {**table, 'schema': schema(table['mysql_table'])}
-        return self.warehouse.publish(frame, contract, claim, upper_id)
-
-    def run_pipeline(self):
+    def run_pipeline(self, table_name=None, reconcile=False, replay=None):
         started = time.monotonic()
         try:
             self.connect_mysql()
             self.connect_bigquery()
             self.ensure_dataset()
             self.create_metadata_table()
-            for table in self.config.etl_tables:
+            source_reader = Source(self.mysql_engine, self.config.batch_size, self.config.lookback_seconds)
+            selected = [t for t in self.config.etl_tables if table_name is None or t['mysql_table'] == table_name]
+            if not selected:
+                raise ValueError('Unknown source table')
+            for original in selected:
+                table = {**original, 'schema': schema(original['mysql_table'])}
+                if reconcile:
+                    table['incremental'] = False
+                if replay:
+                    table['incremental'] = True
                 claim = self.warehouse.acquire(table['mysql_table'])
                 self.logger.info('Run acquired: table=%s run_id=%s', claim.table, claim.run_id)
-                source = self.extract_data(table, last_id=claim.lower_id)
-                key = table['primary_key']
-                upper = max(claim.lower_id, int(source[key].max())) if not source.empty else claim.lower_id
-                frame = validate(self.transform_data(source, table['transformations']), table['mysql_table'])
-                if len(frame) != len(source) or set(frame[key]) != set(source[key]):
-                    raise ValueError('Transform changed source key accounting')
-                self.load_data(frame, table, claim, upper)
-                self.logger.info('Run succeeded: table=%s run_id=%s rows=%d', claim.table, claim.run_id, len(frame))
+                with source_reader.snapshot(table, claim.lower_time, full=not table['incremental'], replay=replay) as window:
+                    def validated_pages():
+                        for source in window.batches:
+                            frame = validate(self.transform_data(source, table['transformations']), table['mysql_table'])
+                            key = table['primary_key']
+                            if len(frame) != len(source) or set(frame[key]) != set(source[key]):
+                                raise ValueError('Transform changed source key accounting')
+                            yield frame
+                    upper = claim.lower_id if replay else max(claim.lower_id, window.upper_id)
+                    rows = self.warehouse.publish_batches(
+                        validated_pages(), table, claim, upper,
+                        upper_time=None if replay else window.upper_time,
+                    )
+                self.logger.info('Run succeeded: table=%s run_id=%s rows=%d', claim.table, claim.run_id, rows)
             self.logger.info('Pipeline succeeded: elapsed_seconds=%.3f', time.monotonic() - started)
             return True
         except Exception as error:
