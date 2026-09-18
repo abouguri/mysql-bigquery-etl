@@ -4,6 +4,21 @@ Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and d
 
 ---
 
+## Current correctness scope
+
+The worker stages and validates batches before publishing destination changes,
+checkpoint progress and run completion in one BigQuery transaction. It uses
+versioned state tables, stable job IDs and a fenced writer lease. Products use
+snapshot replacement, including an intentionally empty source. Users and orders
+currently extract by ID and upsert by key; updates and deletes still require the
+next cursor/reconciliation task. Explicit version-1 commerce schemas reject drift,
+invalid required values and duplicate batch keys. Money uses decimal arithmetic.
+
+Local tests pass; the distributed guarantees still require the opt-in real-cloud
+suite. See [recovery and cloud validation](docs/runbooks/recovery.md). Existing
+warehouse tables require a deliberate schema/data migration; use a fresh sandbox
+for first validation.
+
 ## Features
 - Incremental & full data loads
 - Modular transformations (add your own!)
@@ -33,8 +48,7 @@ make clean-fixtures
 
 For native Python 3.11 development, install `requirements-dev.txt` and run
 `python -m pytest`. `requirements.in` and `requirements-dev.in` are dependency
-inputs; `make lock` regenerates exact transitive pins. Tests marked xfail document
-known failures and are tracked in [the backlog](docs/backlog.md).
+inputs; `make lock` regenerates exact transitive pins. Remaining work and validation gates are tracked in [the backlog](docs/backlog.md).
 See [baseline evidence](docs/evidence/baseline.md) and [the roadmap](docs/portfolio-roadmap.html).
 
 ## Quickstart

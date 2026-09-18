@@ -1,28 +1,37 @@
-"""Document correctness gaps until their roadmap tasks are implemented."""
+"""Failure-path checks for stable BigQuery job identity."""
 from unittest.mock import Mock
 
-import pandas as pd
 import pytest
-from google.api_core.exceptions import Forbidden
-from google.cloud import bigquery
+from google.api_core.exceptions import Forbidden, NotFound
+
+from etl.warehouse import Warehouse
 
 
-def test_checkpoint_permission_error_fails_closed(pipeline):
-    pipeline.bq_client = Mock()
-    pipeline.bq_client.query.side_effect = Forbidden("denied")
+def test_permission_error_fails_closed():
+    client = Mock()
+    client.get_job.side_effect = Forbidden('denied')
+    warehouse = Warehouse(client, 'fixture-project', 'fixture', 'US')
     with pytest.raises(Forbidden):
-        pipeline.get_last_processed_id("users")
+        warehouse.acquire('users')
+    client.query.assert_not_called()
 
 
-def test_checkpoint_waits_for_completion(pipeline):
-    pipeline.bq_client = Mock()
-    pipeline.update_last_processed_id("users", 1)
-    pipeline.bq_client.query.return_value.result.assert_called_once()
+def test_mutation_waits_for_completion():
+    client = Mock()
+    client.get_job.side_effect = NotFound('new job')
+    warehouse = Warehouse(client, 'fixture-project', 'fixture', 'US')
+    warehouse.query('SELECT 1', 'abc', 'check')
+    client.query.return_value.result.assert_called_once_with(timeout=60)
 
 
-@pytest.mark.xfail(strict=True, reason="ETL-04: snapshots currently append")
-def test_full_load_replaces_existing_rows(pipeline):
-    pipeline.bq_client = Mock()
-    pipeline.load_data(pd.DataFrame({"product_id": [1]}), pipeline.config.etl_tables[2])
-    args = pipeline.bq_client.load_table_from_dataframe.call_args.kwargs
-    assert args["job_config"].write_disposition != bigquery.WriteDisposition.WRITE_APPEND
+def test_unknown_job_outcome_reuses_identity(monkeypatch):
+    client = Mock()
+    existing = Mock()
+    existing.result.return_value = ['committed']
+    client.get_job.side_effect = [NotFound('new job'), existing]
+    client.query.return_value.result.side_effect = TimeoutError()
+    monkeypatch.setattr('etl.warehouse.time.sleep', lambda _: None)
+    warehouse = Warehouse(client, 'fixture-project', 'fixture', 'US')
+    assert warehouse.query('mutation', 'abc', 'publish') == ['committed']
+    client.query.assert_called_once()
+    assert [call.args[0] for call in client.get_job.call_args_list] == ['etl_abc_publish'] * 2

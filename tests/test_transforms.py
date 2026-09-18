@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pandas as pd
 
 
@@ -10,7 +12,7 @@ def test_commerce_transforms(pipeline):
         pd.DataFrame({"quantity": [2, 1], "unit_price": [19.95, 250]}),
         ["calculate_totals", "categorize_orders"],
     )
-    assert orders.total_amount.tolist() == [39.9, 250]
+    assert orders.total_amount.tolist() == [Decimal("39.90"), Decimal("250.00")]
     assert orders.order_size.tolist() == ["Small", "Large"]
 
 

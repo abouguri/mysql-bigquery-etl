@@ -32,3 +32,7 @@ The three expected failures remain open correctness tasks. Milestone 1 still req
 ## Task 2 result
 
 The mounted-source suite against the disposable MySQL fixture now reports **21 passed, 1 expected failure**. The checkpoint-read and completion-wait regressions are passing. The remaining expected failure is full-load append semantics. Shell syntax and Compose configuration checks pass. No cloud execution has been claimed.
+
+## Task 3 result
+
+The publication/contract implementation reports **37 passed, 4 skipped** against the disposable MySQL fixture. No expected failures remain. The four skips are explicit real-BigQuery gates (snapshot replay/empty source, stale owner, concurrent acquisition and upsert replay). Decimal revenue from the actual MySQL fixture reconciles to 309.85. Unknown job outcomes reuse the same job ID in client tests; failed staging never reaches publication. These tests do not establish live BigQuery transaction guarantees.

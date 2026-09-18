@@ -22,3 +22,22 @@ def test_seeded_source():
             )) == Decimal("309.85")
     finally:
         engine.dispose()
+
+
+@pytest.mark.mysql
+@pytest.mark.skipif(os.getenv("RUN_MYSQL_TESTS") != "1", reason="opt-in local MySQL")
+def test_source_frames_meet_commerce_contracts(monkeypatch):
+    from etl_pipeline import ETLPipeline
+    from etl.contracts import validate
+    monkeypatch.setenv('GCP_PROJECT_ID', 'fixture-project')
+    pipeline = ETLPipeline()
+    pipeline.connect_mysql()
+    try:
+        for table in pipeline.config.etl_tables:
+            source = pipeline.extract_data(table)
+            output = validate(pipeline.transform_data(source, table['transformations']), table['mysql_table'])
+            assert len(output) == len(source)
+            if table['mysql_table'] == 'orders':
+                assert sum(output.total_amount) == Decimal('309.85')
+    finally:
+        pipeline.mysql_engine.dispose()

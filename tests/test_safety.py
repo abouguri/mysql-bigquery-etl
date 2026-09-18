@@ -43,22 +43,6 @@ def test_metadata_bootstrap_order(pipeline):
     assert calls == ["dataset", "metadata"]
 
 
-def test_duplicate_checkpoints_fail_closed(pipeline):
-    pipeline.bq_client = Mock()
-    pipeline.bq_client.query.return_value.result.return_value = [
-        SimpleNamespace(last_processed_id=1), SimpleNamespace(last_processed_id=2)
-    ]
-    with pytest.raises(ValueError, match="Duplicate"):
-        pipeline.get_last_processed_id("users")
-
-
-def test_checkpoint_job_failure_propagates(pipeline):
-    pipeline.bq_client = Mock()
-    pipeline.bq_client.query.return_value.result.side_effect = RuntimeError("job failed")
-    with pytest.raises(RuntimeError, match="job failed"):
-        pipeline.update_last_processed_id("users", 1)
-
-
 def test_password_is_encoded_by_url_builder(pipeline, monkeypatch):
     monkeypatch.setenv("MYSQL_PASSWORD", "a@b:/?#")
     engine = Mock()
