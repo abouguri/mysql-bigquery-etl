@@ -4,6 +4,7 @@ from config.config import Config
 
 
 def test_config_defaults(monkeypatch):
+    monkeypatch.setenv('ENVIRONMENT', 'development')
     monkeypatch.delenv('GCP_PROJECT_ID', raising=False)
     monkeypatch.delenv('BIGQUERY_DATASET', raising=False)
     monkeypatch.delenv('BIGQUERY_LOCATION', raising=False)

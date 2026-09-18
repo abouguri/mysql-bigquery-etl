@@ -21,6 +21,22 @@ Welcome to the **mysql-bigquery-etl** project! This is a robust, flexible, and d
 
 ---
 
+## Reproducible development checks
+
+Docker and Docker Compose provide the same Python 3.11 runtime as CI:
+
+```sh
+make test          # cloud-free unit and regression tests
+make integration   # disposable MySQL + deterministic commerce fixtures
+make clean-fixtures
+```
+
+For native Python 3.11 development, install `requirements-dev.txt` and run
+`python -m pytest`. `requirements.in` and `requirements-dev.in` are dependency
+inputs; `make lock` regenerates exact transitive pins. Tests marked xfail document
+known failures and are tracked in [the backlog](docs/backlog.md).
+See [baseline evidence](docs/evidence/baseline.md) and [the roadmap](docs/portfolio-roadmap.html).
+
 ## Quickstart
 1. **Clone the repo:**
    ```sh

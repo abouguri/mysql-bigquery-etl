@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: local-root-only
+      MYSQL_DATABASE: commerce_fixture
+      MYSQL_USER: etl_fixture
+      MYSQL_PASSWORD: local-fixture-only
+    ports:
+      - "127.0.0.1:${MYSQL_TEST_PORT:-3307}:3306"
+    tmpfs:
+      - /var/lib/mysql
+    volumes:
+      - ./tests/fixtures/commerce.sql:/docker-entrypoint-initdb.d/commerce.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysql --protocol=TCP -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD $$MYSQL_DATABASE -e 'SELECT COUNT(*) FROM orders' >/dev/null 2>&1"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  tests:
+    build:
+      context: .
+      target: test
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: etl_fixture
+      MYSQL_PASSWORD: local-fixture-only
+      MYSQL_DATABASE: commerce_fixture
+      RUN_MYSQL_TESTS: "1"
+      ENVIRONMENT: development
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["python", "-m", "pytest", "-q"]

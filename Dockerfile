@@ -1,23 +1,18 @@
-FROM python:3.9-slim
-
+FROM python:3.11-slim AS base
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    default-libmysqlclient-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN useradd --create-home --uid 10001 app
 
-# Copy application code
-COPY . .
-
-# Create non-root user
-RUN useradd -m -r app && chown -R app /app
+FROM base AS test
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+COPY --chown=app:app . .
 USER app
+CMD ["python", "-m", "pytest", "-q"]
 
-# Run the application
+FROM base AS runtime
+COPY --chown=app:app . .
+USER app
 CMD ["python", "server.py"]
