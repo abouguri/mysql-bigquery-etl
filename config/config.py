@@ -15,7 +15,9 @@ def identifier(value):
 class Config:
     """Environment-only configuration; cloud secrets are injected by the runtime."""
 
-    def __init__(self):
+    def __init__(self, backend=None):
+        self.backend = backend or os.getenv("ETL_BACKEND", "local")
+        self.local_path = os.getenv("ETL_LOCAL_PATH", "local/warehouse.sqlite")
         self.project_id = os.getenv("GCP_PROJECT_ID")
         self.environment = os.getenv("ENVIRONMENT", "development")
 
@@ -24,11 +26,17 @@ class Config:
         return os.getenv(secret_id, default)
 
     def validate(self):
-        required = ["GCP_PROJECT_ID", "MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"]
+        if self.backend not in {"local", "bigquery"}:
+            raise ValueError("Unsupported ETL_BACKEND")
+        if self.backend == "bigquery" and os.getenv("ETL_ALLOW_CLOUD") != "1":
+            raise ValueError("Cloud execution disabled; ETL_ALLOW_CLOUD=1 is required")
+        required = ["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"]
+        if self.backend == "bigquery":
+            required.append("GCP_PROJECT_ID")
         missing = [name for name in required if not os.getenv(name)]
         if missing:
             raise ValueError("Missing required settings: " + ", ".join(missing))
-        if not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", self.project_id):
+        if self.backend == "bigquery" and not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", self.project_id):
             raise ValueError("Invalid GCP_PROJECT_ID")
         if self.environment not in {"development", "test", "production"}:
             raise ValueError("Invalid ENVIRONMENT")

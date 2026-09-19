@@ -3,6 +3,8 @@ import pytest
 
 @pytest.fixture
 def pipeline(monkeypatch):
+    monkeypatch.setenv("ETL_BACKEND", "bigquery")
+    monkeypatch.setenv("ETL_ALLOW_CLOUD", "1")
     monkeypatch.setenv("GCP_PROJECT_ID", "fixture-project")
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("MYSQL_HOST", "localhost")

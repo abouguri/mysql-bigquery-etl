@@ -21,6 +21,7 @@ def timestamp(value):
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--backend', choices=['local', 'bigquery'], help='Default: local; cloud additionally requires ETL_ALLOW_CLOUD=1')
     parser.add_argument('--table', choices=['users', 'orders', 'products'])
     parser.add_argument('--reconcile', action='store_true', help='Replace selected tables from consistent source snapshots, repairing deletes')
     parser.add_argument('--replay-from', type=timestamp)
@@ -40,7 +41,7 @@ def main(argv=None):
     configure_logging()
     try:
         replay = (args.replay_from, args.replay_until) if args.replay_from else None
-        return 0 if ETLPipeline().run_pipeline(args.table, args.reconcile, replay) else 1
+        return 0 if ETLPipeline(backend=args.backend).run_pipeline(args.table, args.reconcile, replay) else 1
     except Exception as error:
         event(logging.getLogger(__name__), 'pipeline_failed', severity=logging.ERROR, error_type=type(error).__name__)
         return 1

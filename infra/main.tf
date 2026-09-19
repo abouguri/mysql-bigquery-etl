@@ -75,6 +75,7 @@ resource "google_cloud_run_v2_job" "etl" {
           for_each = {
             GCP_PROJECT_ID    = var.project_id, BIGQUERY_DATASET = var.dataset_id,
             BIGQUERY_LOCATION = var.bigquery_location, ENVIRONMENT = "production",
+            ETL_BACKEND       = "bigquery", ETL_ALLOW_CLOUD = "1",
             MYSQL_SSL_CA      = "/secrets/mysql/ca.pem", ETL_BATCH_SIZE = "10000", ETL_LOOKBACK_SECONDS = "86400"
           }
           content {

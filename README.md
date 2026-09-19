@@ -4,7 +4,7 @@
 
 A Python batch pipeline that stages and validates MySQL commerce data before publishing it to BigQuery. It combines bounded extraction, explicit data contracts, transactional publication, writer fencing and reconciliation with a reproducible local test/benchmark environment.
 
-**Status: locally validated preview.** The suite has 55 passing tests with the disposable MySQL fixture; five real-BigQuery integration tests require explicit opt-in and have not been executed. Terraform validates, but cloud deployment, live concurrency guarantees, alerts and billing have not been verified. See [open gates](docs/backlog.md).
+**Status: locally validated preview, $0 operating budget.** The default backend is SQLite; the demo uses disposable MySQL and makes no cloud calls. The local suite has 64 passing tests; five real-BigQuery integration tests remain unexecuted. Terraform validates, but cloud deployment, live concurrency guarantees, alerts and billing have not been verified. See [open gates](docs/backlog.md).
 
 ## Why this project exists
 
@@ -37,6 +37,16 @@ flowchart LR
 
 The fencing and transaction guarantees are **designs implemented in code, awaiting live BigQuery validation**. Local client tests cannot prove distributed behavior.
 
+## Run the $0 demo
+
+```sh
+make demo           # extract MySQL fixtures and publish into local SQLite
+make demo-report    # inspect counts, revenue, checkpoints and run history
+make demo           # repeat safely
+```
+
+Expected: two users, two products, three orders, **309.85 USD**. Docker is required. Images/packages need an initial download; the runtime network is internal. The warehouse persists under ignored `local/`. See [demo instructions and backend tradeoffs](docs/local-demo.md).
+
 ## Run local tests
 
 Prerequisites: Docker and Docker Compose. No cloud credentials are required.
@@ -65,9 +75,9 @@ python -m pytest -q
 Copy `.env.example` to `.env`, set the sandbox project/source connection and authenticate with Application Default Credentials. Do not commit credentials. For the Compose source, keep `docker compose up -d mysql` running before using the host CLI.
 
 ```sh
-python main.py
-python main.py --reconcile
-python main.py --table orders \
+ETL_ALLOW_CLOUD=1 python main.py --backend bigquery
+ETL_ALLOW_CLOUD=1 python main.py --backend bigquery --reconcile
+ETL_ALLOW_CLOUD=1 python main.py --backend bigquery --table orders \
   --replay-from 2026-01-01T00:00:00Z \
   --replay-until 2026-01-02T00:00:00Z
 ```
@@ -95,7 +105,7 @@ These numbers measure generation, transformation, validation and reconciliation 
 | Deletes | Full reconciliation repairs current state; no historical delete/event stream |
 | Memory | Runtime pages source/staging data; local processing benchmark measured separately from network I/O |
 | Data quality | Explicit required schemas, exact decimal money, unique keys; reject the batch on invalid data |
-| Concurrency | Fixed 30-minute lease; no heartbeat. Jobs have a 25-minute timeout; stale publication must fail |
+| Concurrency (BigQuery) | Fixed 30-minute lease; no heartbeat. Jobs have a 25-minute timeout; stale publication must fail |
 | Retention | Staging expires after one day; target/state/audit retention requires an operator policy |
 | Business model | One product per order, USD, UTC, current categories; no multi-line carts, SCD history or FX |
 

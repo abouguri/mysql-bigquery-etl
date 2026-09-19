@@ -33,3 +33,28 @@ services:
       mysql:
         condition: service_healthy
     command: ["python", "-m", "pytest", "-q"]
+
+  demo:
+    profiles: [demo]
+    build:
+      context: .
+      target: runtime
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: etl_fixture
+      MYSQL_PASSWORD: local-fixture-only
+      MYSQL_DATABASE: commerce_fixture
+      ETL_BACKEND: local
+      ETL_ALLOW_CLOUD: "0"
+      ETL_LOCAL_PATH: /data/warehouse.sqlite
+      ENVIRONMENT: development
+    volumes:
+      - ./local:/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+networks:
+  default:
+    internal: true

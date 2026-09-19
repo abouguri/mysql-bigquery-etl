@@ -19,7 +19,9 @@ This is the versioned issue register for the roadmap. Check validation evidence 
 | ETL-13 | P1 | Revenue mart, reconciliation and performance/cost evidence | SQL and local 100k/1m evidence ready; cloud reconciliation/cost pending |
 | ETL-14 | P2 | README, release, demo and measured CV case study | Written for local preview; live/recorded demo and independent reproduction pending |
 
-External requirements: user-selected cloud sandbox and test spend cap; cloud credentials; a real observation window for freshness claims. Do not invent results while those are unavailable.
+Current budget is **$0**. Cloud gates below are deferred. The active track is the [local MySQL-to-SQLite demo](local-demo.md), process-crash recovery evidence and benchmarks that include real MySQL extraction.
+
+External requirements for future cloud work: user-selected cloud sandbox and test spend cap; cloud credentials; a real observation window for freshness claims. Do not invent results while those are unavailable.
 
 ## External gates that remain open
 

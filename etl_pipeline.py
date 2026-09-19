@@ -14,8 +14,8 @@ from etl.observability import configure_logging, event
 
 
 class ETLPipeline:
-    def __init__(self):
-        self.config = Config()
+    def __init__(self, backend=None):
+        self.config = Config(backend=backend)
         self.config.validate()
         self.mysql_engine = None
         self.bq_client = None
@@ -64,8 +64,12 @@ class ETLPipeline:
         claim = None
         try:
             self.connect_mysql()
-            self.connect_bigquery()
-            self.ensure_dataset()
+            if self.config.backend == 'local':
+                from etl.local_warehouse import LocalWarehouse
+                self.warehouse = LocalWarehouse(self.config.local_path)
+            else:
+                self.connect_bigquery()
+                self.ensure_dataset()
             self.create_metadata_table()
             source_reader = Source(self.mysql_engine, self.config.batch_size, self.config.lookback_seconds)
             selected = [t for t in self.config.etl_tables if table_name is None or t['mysql_table'] == table_name]
@@ -96,7 +100,13 @@ class ETLPipeline:
             event(self.logger, 'pipeline_succeeded', elapsed_seconds=round(time.monotonic() - started, 3))
             return True
         except Exception as error:
-            # Leases deliberately expire on error. Never release an ambiguous publish.
+            # SQLite can resolve local rollback/commit; the cloud backend keeps its
+            # conservative expiry rule because a remote job may still be running.
+            if self.config.backend == 'local' and claim is not None:
+                try:
+                    self.warehouse.abort(claim)
+                except Exception:
+                    event(self.logger, 'local_cleanup_failed', severity=logging.ERROR)
             event(self.logger, 'pipeline_failed', severity=logging.ERROR, error_type=type(error).__name__, table=getattr(claim, 'table', None), run_id=getattr(claim, 'run_id', None))
             return False
         finally:
