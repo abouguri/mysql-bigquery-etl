@@ -52,3 +52,11 @@ The publication/contract implementation reports **37 passed, 4 skipped** against
 ## Task 6 result
 
 **55 passed, 5 skipped** (the new skip is the live revenue-model/quality integration gate). The synthetic processing experiment completed 20 fresh-process samples across 100k/1m rows and bounded/full-frame configurations under two CPUs and 2 GiB. Every sample reconciled row count and exact revenue. At 1m rows, median peak RSS was 150.32 MiB bounded versus 772.95 MiB full-frame; median processing duration was 8.625s versus 8.299s. See `benchmarks/results/summary.md` and its raw CSV/figures for scope and variability. No cloud cost or ETL-throughput result is claimed.
+
+## Zero-budget continuation — 2026-09-19
+
+- Default CLI selects SQLite; BigQuery requires explicit backend selection and `ETL_ALLOW_CLOUD=1`.
+- `make demo` and a repeat run produced two users, two products, three orders and 309.85 USD, with persistent destination state and no cloud calls.
+- The complete fixture suite passed **68 tests**, with five cloud tests skipped. Separate-process crash and lease-conflict checks are included.
+- Static Python checks and Compose configuration validation passed. Terraform formatting was checked; no cloud resources were created.
+- [Recovery evidence](local-recovery.md) includes measured lease-expiry recovery and committed-identity resolution. The test lease is two seconds; the normal local lease is 30 seconds.

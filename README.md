@@ -20,7 +20,10 @@ flowchart LR
     M[MySQL per-table snapshot] --> P[Bounded keyset pages]
     J --> P
     P --> V[Schema and decimal validation]
-    V --> T[Run-specific BigQuery staging]
+    V --> L[Default: local SQLite staging]
+    L --> LX[Atomic publication and checkpoint]
+    LX --> LR[Persistent demo and revenue report]
+    V --> T[Opt-in: BigQuery staging]
     T --> X[Publication transaction]
     F[Owner / generation / lease state] --> X
     X --> D[Destination snapshot or upsert]
@@ -88,6 +91,12 @@ These commands create/query/load BigQuery data and incur cloud usage. Select a s
 
 ## Measured local evidence
 
+**Real MySQL extraction:** at one million rows, 10k-row pages used **177.70 MiB median peak worker RSS**, versus **872.41 MiB** for full-size pages: **79.6% less worker memory**. Median extraction/processing time was **26.229s versus 22.939s** across three fresh-process samples per mode. This includes MySQL reads, transformation and validation; it excludes destination writes and MySQL server memory. [Raw samples, resource limits and methodology](benchmarks/results/mysql-summary.md). Reproduce with `make benchmark-mysql`.
+
+**Crash recovery:** separate workers terminate abruptly after staging, before commit and after commit; tests check durable data/checkpoint consistency, retry identity and competing ownership. [Measured recovery evidence](docs/evidence/local-recovery.md). Reproduce with `make recovery-demo`.
+
+**Processing-only comparison:**
+
 At one million synthetic rows, 10,000-row pages used **150.32 MiB median peak process RSS**, versus **772.95 MiB** for a full DataFrame running the same transforms/contracts: **80.6% less memory**, with **3.9% greater median processing time**. Five fresh-process samples per configuration ran under two CPUs and 2 GiB container memory.
 
 ![Local memory/runtime benchmark](benchmarks/results/comparison.svg)
@@ -99,12 +108,13 @@ These numbers measure generation, transformation, validation and reconciliation 
 | Area | Implemented behavior / boundary |
 |---|---|
 | Retry identity | Resolve the same operation job ID after uncertain acknowledgement; no fresh ID invented on retry |
-| Publication | Data, checkpoint, owner fencing and success record share a transaction; live-cloud verification pending |
+| Publication | SQLite data/checkpoint atomicity verified with process-crash tests; live BigQuery verification pending |
 | Source consistency | Consistent per-table InnoDB snapshots; no cross-table snapshot guarantee |
 | Change capture | Source-maintained UTC timestamps plus lookback; arbitrary late commits require reconciliation |
 | Deletes | Full reconciliation repairs current state; no historical delete/event stream |
 | Memory | Runtime pages source/staging data; local processing benchmark measured separately from network I/O |
 | Data quality | Explicit required schemas, exact decimal money, unique keys; reject the batch on invalid data |
+| Concurrency (SQLite) | One database writer; 30-second table leases renew after each staged page; expired owners fail closed |
 | Concurrency (BigQuery) | Fixed 30-minute lease; no heartbeat. Jobs have a 25-minute timeout; stale publication must fail |
 | Retention | Staging expires after one day; target/state/audit retention requires an operator policy |
 | Business model | One product per order, USD, UTC, current categories; no multi-line carts, SCD history or FX |

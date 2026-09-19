@@ -4,12 +4,12 @@ This is a reproducible demo guide, not a claim that a video or live cloud demo h
 
 | Time | Show | Explain |
 |---|---|---|
-| 0:00–0:45 | README architecture and business model | MySQL commerce data feeds BigQuery revenue reporting; correctness under failure drives the design |
-| 0:45–1:30 | `make integration` and fixture revenue assertion | Known source counts and exact revenue make validation reproducible without cloud credentials |
-| 1:30–2:30 | `tests/test_regressions.py`, `tests/test_publication.py`, recovery runbook | Uncertain acknowledgements reuse job IDs; partial staging does not publish; fencing and checkpoint mutation share the transaction |
-| 2:30–3:30 | `tests/test_source.py` and CLI help | Snapshot pages remain consistent during source updates; reconciliation repairs the lookback's limits; replay is current-state repair, not time travel |
-| 3:30–4:30 | Benchmark chart and raw samples | Bounded pages trade a little processing time for much lower memory in a controlled local experiment |
-| 4:30–5:00 | Backlog cloud gates | Separate demonstrated behavior from proposed distributed guarantees and explain exactly what remains to validate |
+| 0:00–0:45 | README architecture | Explain the commerce use case, $0 constraint and shared reader/contracts with separate warehouse backends |
+| 0:45–1:30 | `make demo`, `make demo-report`, then repeat | Show two users, two products, three orders and 309.85 USD without duplicates |
+| 1:30–2:30 | `make recovery-demo` and recovery CSV | Workers exit abruptly around commit; inspect atomic progress, lease expiry and committed retry identity |
+| 2:30–3:30 | `tests/test_source.py` and CLI help | Consistent snapshots during updates; reconciliation repairs deletes and lookback limits; replay is current-state repair |
+| 3:30–4:30 | Real MySQL benchmark table and raw samples | Explain 79.6% lower worker memory, the runtime tradeoff, sample count and excluded destination/server costs |
+| 4:30–5:00 | Case study and deferred cloud gates | State exactly what the local tests prove and what still requires live BigQuery validation |
 
 For a real cloud demo, first complete the deployment/runbook gates. Then show a scheduled run, edit source rows, inject a source failure, inspect alerts/job IDs, resolve any uncertain outcome, wait for lease expiry, rerun and reconcile revenue. Do not replace this with fake successful logs or label mock tests as cloud recovery evidence.
 
@@ -21,8 +21,10 @@ For a real cloud demo, first complete the deployment/runbook gates. Then show a 
 
 **Why replay the whole window?** It simplifies checkpoints: progress advances only after all pages publish. It costs re-reading/re-staging after failure, while keeping memory bounded.
 
-**Why not release a lease on every error?** The server may have committed while the client timed out. Releasing early could create overlapping publication attempts before the outcome is known.
+**Why different lease handling?** A cloud job may still run after a client timeout, so that backend keeps its conservative expiry rule. SQLite can resolve its local transaction state and release a matching claim on an ordinary error. An abrupt process exit bypasses cleanup, so recovery waits for lease expiry.
 
 **Why did memory fall while time increased?** Smaller DataFrames reduce peak live data but add per-batch overhead. The experiment compares identical processing logic, not different correctness levels.
 
-**What would you improve next?** Run the real BigQuery fault/concurrency suite, deploy into the approved sandbox, verify IAM/alerts, measure end-to-end cost/source impact, and collect an honest freshness observation window. Add lease renewal or CDC only when measured requirements justify them.
+**Why SQLite?** It gives a durable, inspectable local destination with transactions and exact integer-cent money at no service cost. Its single-writer behavior limits concurrency; it does not emulate BigQuery.
+
+**What would you improve next at $0?** Ask a peer to reproduce the demo, record the walkthrough, then measure source undo retention and local destination publication under larger workloads. Keep cloud gates deferred. Add CDC only when freshness and capture requirements justify its operational complexity.
