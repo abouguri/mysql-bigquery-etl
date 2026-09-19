@@ -19,3 +19,7 @@ demo-report:
 recovery-demo:
 	docker build --target test -t mysql-bigquery-etl-tests .
 	docker run --rm --network none --user "$$(id -u):$$(id -g)" -v "$$(pwd):/app:ro" -v "$$(pwd)/docs/evidence:/evidence" mysql-bigquery-etl-tests python -m scripts.local_recovery --output /evidence/local-recovery.csv
+
+.PHONY: benchmark-mysql
+benchmark-mysql:
+	LOCAL_UID=$$(id -u) LOCAL_GID=$$(id -g) BENCH_COMMIT=$$(git rev-parse HEAD) docker compose --profile benchmark run --build --rm benchmark

@@ -26,3 +26,11 @@ install `benchmarks/plot-requirements.txt` in a separate environment and run
 `python -m benchmarks.report --plot`. Plotting dependencies are never imported
 inside the timed worker. Bars show medians with min/max error bars, not confidence
 intervals. The chart is derived from the recorded CSV rather than hand-entered values.
+
+## Real MySQL experiment
+
+`make benchmark-mysql` builds a dedicated test-container profile, seeds separate synthetic `benchmark_orders_*` tables in the disposable `commerce_fixture` database and compares 10,000-row pages with full-size pages through the actual `Source.snapshot` reader. Existing benchmark tables cause a failure rather than being overwritten. Successfully seeded tables are dropped after their samples; interrupted experiments can be reset with `make clean-fixtures`. Normal fixture users/products/orders are not modified.
+
+The deterministic seven-column order data matches the processing-only experiment. Three fresh-process samples per mode at 100k and 1m rows validate counts and exact revenue. Samples alternate mode order. A full-size page still uses the current source reader and contracts; it is not the original pipeline implementation. Timing includes MySQL reads and DataFrame creation but excludes fixture generation, imports and destination writes. Peak RSS includes imports and excludes the separate MySQL server. Worker limits are two CPUs and 2 GiB; MySQL is uncapped, uses tmpfs, and caches are not flushed. This is a local warmed-source comparison, not a remote-network or disk-throughput claim.
+
+Run `python3 -m benchmarks.mysql_report` to regenerate the [measured table](results/mysql-summary.md) from [raw CSV](results/mysql.csv). No cloud account is used. The Compose runtime network is internal. The existing processing-only results remain a separate experiment with a different scope.
