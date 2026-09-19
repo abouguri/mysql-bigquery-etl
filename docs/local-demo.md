@@ -27,3 +27,7 @@ SQLite stores required columns, primary keys and a schema signature. Monetary co
 After a commit whose acknowledgement is lost, the same run identity resolves its durable success without rereading the source. This is a local SQLite contract, not a BigQuery emulator or proof of distributed cloud behavior. SQLite has one writer per database; the backend is a portfolio/reference implementation, not an analytics warehouse at production scale.
 
 Reference: [SQLite transaction behavior](https://www.sqlite.org/lang_transaction.html).
+
+## Demonstrate crash recovery
+
+Run `make recovery-demo` to terminate workers at publication boundaries and reproduce the [durable recovery checks](evidence/local-recovery.md). This uses temporary SQLite files and no network.

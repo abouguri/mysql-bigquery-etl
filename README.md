@@ -4,7 +4,7 @@
 
 A Python batch pipeline that stages and validates MySQL commerce data before publishing it to BigQuery. It combines bounded extraction, explicit data contracts, transactional publication, writer fencing and reconciliation with a reproducible local test/benchmark environment.
 
-**Status: locally validated preview, $0 operating budget.** The default backend is SQLite; the demo uses disposable MySQL and makes no cloud calls. The local suite has 64 passing tests; five real-BigQuery integration tests remain unexecuted. Terraform validates, but cloud deployment, live concurrency guarantees, alerts and billing have not been verified. See [open gates](docs/backlog.md).
+**Status: locally validated preview, $0 operating budget.** The default backend is SQLite; the demo uses disposable MySQL and makes no cloud calls. The local suite has 68 passing tests; five real-BigQuery integration tests remain unexecuted. Terraform validates, but cloud deployment, live concurrency guarantees, alerts and billing have not been verified. See [open gates](docs/backlog.md).
 
 ## Why this project exists
 

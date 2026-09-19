@@ -3,7 +3,7 @@ test:
 	docker build --target test -t mysql-bigquery-etl:test .
 	docker run --rm mysql-bigquery-etl:test
 integration:
-	docker compose up --build --abort-on-container-exit --exit-code-from tests tests
+	docker compose run --build --rm tests
 clean-fixtures:
 	docker compose down --volumes
 lock:
@@ -14,3 +14,8 @@ demo:
 	LOCAL_UID=$$(id -u) LOCAL_GID=$$(id -g) docker compose --profile demo run --build --rm demo
 demo-report:
 	LOCAL_UID=$$(id -u) LOCAL_GID=$$(id -g) docker compose --profile demo run --rm --no-deps --entrypoint python demo -c 'import json; from etl.local_warehouse import LocalWarehouse; print(json.dumps(LocalWarehouse("/data/warehouse.sqlite").report(), indent=2))'
+
+.PHONY: recovery-demo
+recovery-demo:
+	docker build --target test -t mysql-bigquery-etl-tests .
+	docker run --rm --network none --user "$$(id -u):$$(id -g)" -v "$$(pwd):/app:ro" -v "$$(pwd)/docs/evidence:/evidence" mysql-bigquery-etl-tests python -m scripts.local_recovery --output /evidence/local-recovery.csv

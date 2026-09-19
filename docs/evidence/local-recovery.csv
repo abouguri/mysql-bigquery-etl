@@ -1,0 +1,5 @@
+scenario,recovery_seconds,test_lease_seconds,rows,checkpoint,result
+after_stage,2.0345,2,1,1,passed
+before_commit,2.0426,2,1,1,passed
+after_commit,0.003,2,1,1,passed
+overlap,,30,0,0,one owner; one rejected
